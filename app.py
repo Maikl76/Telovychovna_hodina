@@ -55,19 +55,29 @@ def page_roles():
 def page_exercise_constructs():
     st.title("Výběr cvičebních konstruktů a podkategorií")
     
+    # Načtení dat z Excel souboru "Podklady.xlsx" pro cvičební konstrukty
+    try:
+        podklady = pd.read_excel("Podklady.xlsx", engine='openpyxl')
+        fitness_options = sorted(podklady["Zdatnost"].dropna().unique())
+        manipulation_options = sorted(podklady["Manipulace s predmety"].dropna().unique())
+        locomotion_options = sorted(podklady["Lokomoce"].dropna().unique())
+    except Exception as e:
+        st.error("Nepodařilo se načíst data z excel souboru Podklady.xlsx pro cvičební konstrukty.")
+        # Záložní hodnoty:
+        fitness_options = ["Silové schopnosti", "Vytrvalostní schopnosti", "Agilita"]
+        manipulation_options = ["Koordinační schopnosti", "Reakční schopnosti", "Rovnovážné schopnosti", "Orientace v prostoru"]
+        locomotion_options = ["Běh", "Skákání", "Chůze"]
+    
     st.write("**Zdatnost:**")
-    fitness_options = ["Silové schopnosti", "Vytrvalostní schopnosti", "Agilita"]
     fitness_selected = st.multiselect("Zdatnost:", fitness_options, default=fitness_options)
     st.session_state.fitness = fitness_selected
     
     st.write("**Manipulace s předměty:**")
-    manipulation_options = ["Koordinační schopnosti", "Reakční schopnosti", "Rovnovážné schopnosti", "Orientace v prostoru"]
     manipulation_selected = st.multiselect("Manipulace s předměty:", manipulation_options, default=manipulation_options)
     st.session_state.manipulation = manipulation_selected
     
     st.write("**Lokomoce:**")
-    locomotion_options = ["Běh", "Skákání", "Chůze"]
-    locomotion_selected = st.multiselect("Lokomoce:", locomotion_options, default=["Běh", "Skákání"])
+    locomotion_selected = st.multiselect("Lokomoce:", locomotion_options, default=locomotion_options[:2] if locomotion_options else [])
     st.session_state.locomotion = locomotion_selected
 
 # Stránka Časové rozdělení hodiny
