@@ -86,14 +86,23 @@ def page_environment_equipment():
     st.write("Vybrané prostředí:", env)
     
     st.write("Vyberte dostupné vybavení:")
-    # Načtení vybavení z Excel souboru "Podklady.xlsx" ze sloupce "Vybaveni"
+    # Nahrazeno načítáním z Supabase místo Excelu
     try:
-        podklady = pd.read_excel("Podklady.xlsx", engine='openpyxl')
-        equipment_options = sorted(podklady["Vybaveni"].dropna().unique())
-    except Exception as e:
-        st.error("Nepodařilo se načíst vybavení z excel souboru Podklady.xlsx.")
-        equipment_options = ["Míče", "Kužely", "Švihadla"]  # záložní možnosti
-    
+        from utils.database import get_resources
+    except ImportError:
+        st.error("Modul database.py není dostupný. Zkontrolujte instalaci.")
+        get_resources = lambda x: []  # Fallback, pokud modul chybí
+
+    # Funkce pro načtení možností z Supabase
+    def load_resource_options(resource_type):
+        resources = get_resources(resource_type)
+        if resources:
+            return sorted([res['value'] for res in resources])
+        else:
+            st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
+            return []  # Vrátí prázdný seznam, pokud data chybí
+
+    equipment_options = load_resource_options("Vybaveni")
     # Uživatel si může vybrat vybavení, defaultně se vyberou první dvě položky (pokud existují)
     equipment_selected = st.multiselect("Vybavení:", equipment_options, default=equipment_options[:2] if equipment_options else [])
     st.session_state.equipment = equipment_selected
@@ -119,18 +128,25 @@ def page_roles():
 def page_exercise_constructs():
     st.title("Výběr cvičebních konstruktů a podkategorií")
     
-    # Načtení dat z Excel souboru "Podklady.xlsx" pro cvičební konstrukty
+    # Nahrazeno načítáním z Supabase místo Excelu
     try:
-        podklady = pd.read_excel("Podklady.xlsx", engine='openpyxl')
-        fitness_options = sorted(podklady["Zdatnost"].dropna().unique())
-        manipulation_options = sorted(podklady["Manipulace s predmety"].dropna().unique())
-        locomotion_options = sorted(podklady["Lokomoce"].dropna().unique())
-    except Exception as e:
-        st.error("Nepodařilo se načíst data z excel souboru Podklady.xlsx pro cvičební konstrukty.")
-        # Záložní hodnoty:
-        fitness_options = ["Silové schopnosti", "Vytrvalostní schopnosti", "Agilita"]
-        manipulation_options = ["Koordinační schopnosti", "Reakční schopnosti", "Rovnovážné schopnosti", "Orientace v prostoru"]
-        locomotion_options = ["Běh", "Skákání", "Chůze"]
+        from utils.database import get_resources
+    except ImportError:
+        st.error("Modul database.py není dostupný. Zkontrolujte instalaci.")
+        get_resources = lambda x: []  # Fallback, pokud modul chybí
+
+    # Funkce pro načtení možností z Supabase
+    def load_resource_options(resource_type):
+        resources = get_resources(resource_type)
+        if resources:
+            return sorted([res['value'] for res in resources])
+        else:
+            st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
+            return []  # Vrátí prázdný seznam, pokud data chybí
+
+    fitness_options = load_resource_options("Zdatnost")
+    manipulation_options = load_resource_options("Manipulace s predmety")
+    locomotion_options = load_resource_options("Lokomoce")
     
     st.write("**Zdatnost:**")
     fitness_selected = st.multiselect("Zdatnost:", fitness_options, default=fitness_options)
@@ -253,19 +269,26 @@ def page_generate_plan():
         clear_plan_data()
         st.rerun()
     
-    # Načtení excel souboru Podklady.xlsx s možnostmi pro rozevírací nabídky
+    # Nahrazeno načítáním z Supabase místo Excelu
     try:
-        podklady = pd.read_excel("Podklady.xlsx", engine='openpyxl')
-        goal_options = sorted(podklady["Cil"].dropna().unique())
-        place_options = sorted(podklady["Misto"].dropna().unique())
-        safety_options = sorted(podklady["Bezpecnost"].dropna().unique())
-        method_options = sorted(podklady["Metody"].dropna().unique())
-    except Exception as e:
-        st.error("Nepodařilo se načíst soubor Podklady.xlsx. Ujistěte se, že soubor existuje a je ve správném formátu.")
-        goal_options = []
-        place_options = []
-        safety_options = []
-        method_options = []
+        from utils.database import get_resources
+    except ImportError:
+        st.error("Modul database.py není dostupný. Zkontrolujte instalaci.")
+        get_resources = lambda x: []  # Fallback, pokud modul chybí
+
+    # Funkce pro načtení možností z Supabase
+    def load_resource_options(resource_type):
+        resources = get_resources(resource_type)
+        if resources:
+            return sorted([res['value'] for res in resources])
+        else:
+            st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
+            return []  # Vrátí prázdný seznam, pokud data chybí
+
+    goal_options = load_resource_options("Cil")
+    place_options = load_resource_options("Misto")
+    safety_options = load_resource_options("Bezpecnost")
+    method_options = load_resource_options("Metody")
     
     st.subheader("Zadejte základní informace o přípravě")
     plan_title = st.text_input("Nadpis přípravy:", key="plan_title")
@@ -786,19 +809,24 @@ def page_saved_plans():
 def page_school_selection():
     st.title("Výběr škol a kategorií")
     
-    # Načtení škol z Excel souboru "Podklady.xlsx" ze sloupce "Misto"
+    # Nahrazeno načítáním z Supabase místo Excelu
     try:
-        podklady = pd.read_excel("Podklady.xlsx", engine='openpyxl')
-        school_options = sorted(podklady["Misto"].dropna().unique())
-        
-        # Získání kategorií škol ze sloupce "Kategorie školy"
-        categories = sorted(podklady["Kategorie školy"].dropna().unique())
-        if not categories:
-            categories = ["Experimentální", "Semi-experimentální"]
-    except Exception as e:
-        st.error(f"Nepodařilo se načíst školy z excel souboru Podklady.xlsx: {e}")
-        school_options = ["ZŠ Komenského", "ZŠ Masarykova", "ZŠ Tyršova"]  # záložní možnosti
-        categories = ["Experimentální", "Semi-experimentální"]
+        from utils.database import get_resources
+    except ImportError:
+        st.error("Modul database.py není dostupný. Zkontrolujte instalaci.")
+        get_resources = lambda x: []  # Fallback, pokud modul chybí
+
+    # Funkce pro načtení možností z Supabase
+    def load_resource_options(resource_type):
+        resources = get_resources(resource_type)
+        if resources:
+            return sorted([res['value'] for res in resources])
+        else:
+            st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
+            return []  # Vrátí prázdný seznam, pokud data chybí
+
+    school_options = load_resource_options("Misto")  # Pro školy
+    category_options = load_resource_options("Kategorie školy")  # Pro kategorie škol
     
     # Výběr škol
     selected_schools = st.multiselect("Vyberte školy:", school_options, 
@@ -815,8 +843,8 @@ def page_school_selection():
         if school not in st.session_state.school_category:
             st.session_state.school_category[school] = "Experimentální"  # Výchozí hodnota
         
-        category = st.radio(f"Kategorie pro {school}:", categories, 
-                           index=categories.index(st.session_state.school_category[school]) if st.session_state.school_category[school] in categories else 0,
+        category = st.radio(f"Kategorie pro {school}:", category_options, 
+                           index=category_options.index(st.session_state.school_category[school]) if st.session_state.school_category[school] in category_options else 0,
                            key=f"category_{school}")
         st.session_state.school_category[school] = category
     
