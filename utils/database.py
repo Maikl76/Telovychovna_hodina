@@ -398,9 +398,11 @@ def get_resources(resource_type: str) -> List[Dict[str, str]]:
     Získá seznam podkladů z tabulky resources podle typu.
     """
     supabase = _get_supabase_client()
+    st.write(f"DEBUG: get_resources() voláno s resource_type={resource_type}")
     if supabase:
         try:
             response = supabase.table("resources").select("*").eq("resource_type", resource_type).order("value", ascending=True).execute()
+            st.write(f"DEBUG: Výsledek dotazu na resources pro {resource_type}: {response.data}")
             return response.data
         except Exception as e:
             st.error(f"Chyba při načítání podkladů z Supabase: {e}")
