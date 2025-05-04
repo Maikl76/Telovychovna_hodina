@@ -929,7 +929,7 @@ def page_admin_resources():
                             if delete_resource(res["id"]):
                                 st.session_state["resource_deleted"] = True
                                 st.success("Podklad byl smazán.")
-                                st.experimental_rerun()
+                                # rerun provedeme až na začátku funkce
                             else:
                                 st.error("Nepodařilo se smazat podklad.")
 
