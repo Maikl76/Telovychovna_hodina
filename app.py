@@ -864,6 +864,9 @@ def page_school_selection():
 
 # Administrátorské stránky – Správa podkladů
 def page_admin_resources():
+    if st.session_state.get("resource_deleted"):
+        del st.session_state["resource_deleted"]
+        st.experimental_rerun()
     st.title("Správa podkladů")
     try:
         from utils.database import get_resources, add_resource, update_resource, delete_resource
@@ -912,8 +915,9 @@ def page_admin_resources():
                                     st.error("Nepodařilo se aktualizovat.")
                             if st.button("Smazat", key=f"del_{key}_{res['id']}"):
                                 if delete_resource(res["id"]):
+                                    st.session_state.resource_deleted = True
                                     st.success("Odstraněno.")
-                                    st.experimental_rerun()
+                                    st.stop()
                                 else:
                                     st.error("Nepodařilo se odstranit.")
 
