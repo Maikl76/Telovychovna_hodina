@@ -251,10 +251,7 @@ def page_generate_plan():
     # Tlačítko pro kompletní vymazání dat na této stránce
     if st.button("Vymazat vše"):
         clear_plan_data()
-        if hasattr(st, "experimental_rerun"):
-            st.experimental_rerun()
-        else:
-            st.warning("Data byla vymazána. Obnovte stránku ručně.")
+        st.rerun()
     
     # Načtení excel souboru Podklady.xlsx s možnostmi pro rozevírací nabídky
     try:
@@ -849,7 +846,7 @@ def admin_login():
         if password == admin_password:
             st.session_state.admin_logged_in = True
             st.success("Přihlášení úspěšné!")
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Nesprávné heslo!")
     
@@ -887,7 +884,7 @@ def page_admin_exercises():
                 if st.button(f"Smazat cvik #{ex['id']}", key=f"delete_{ex['id']}"):
                     if delete_exercise(ex['id']):
                         st.success("Cvik byl smazán.")
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.error("Nepodařilo se smazat cvik.")
 
@@ -925,7 +922,7 @@ def page_admin_ai_exercise():
                     [{"construct_type": construct_type, "subcategory": subcategory}]
                 ):
                     st.success("Cvik byl úspěšně uložen!")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Nepodařilo se uložit cvik.")
         else:
