@@ -1,3 +1,28 @@
+import subprocess
+import sys
+
+def install_package(package_name, module_name=None):
+    # Pokud není uvedeno, použijeme název balíčku jako název modulu
+    module_name = module_name or package_name
+    try:
+        __import__(module_name)
+    except ImportError:
+        print(f"Balíček '{package_name}' není nainstalován. Probíhá instalace...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+        print(f"Balíček '{package_name}' byl úspěšně nainstalován.")
+
+# Seznam závislostí ve formě (název pro pip, název modulu pro import, pokud se liší)
+dependencies = [
+    ("streamlit", None),
+    ("pandas", None),
+    ("openpyxl", None),
+    ("fpdf2", "fpdf"),  # Použijeme fpdf2 místo fpdf pro lepší podporu Unicode
+    ("python-docx", "docx")
+]
+
+for pkg, mod in dependencies:
+    install_package(pkg, mod)
+
 import streamlit as st
 import os
 import base64
@@ -6,6 +31,34 @@ import time
 from datetime import datetime
 import pandas as pd
 
+# Funkce pro vymazání dat na stránce přípravy
+def clear_plan_data():
+    keys_to_clear = [
+        "plan_title",
+        "plan_goal_select",
+        "plan_goal_custom",
+        "lesson_goal",
+        "brief_summary",
+        "plan_date",
+        "plan_place_select",
+        "plan_place_custom",
+        "plan_place",
+        "plan_material",
+        "plan_method_select",
+        "plan_method_custom",
+        "plan_methods",
+        "plan_safety_select",
+        "plan_safety_custom",
+        "plan_safety",
+        "plan_instructor",
+        "prep_output",
+        "main_output",
+        "final_output"
+    ]
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+
 # Stránka Úvod
 def page_intro():
     st.title("Úvod")
@@ -13,6 +66,17 @@ def page_intro():
     # Fixně nastavíme 3. třídu
     st.session_state.class_grade = "3. třída"
     st.write("Vybraná třída: 3. třída")
+    
+    # Inicializace session state pro školy a kategorie, pokud ještě neexistují
+    if 'selected_schools' not in st.session_state:
+        st.session_state.selected_schools = []
+    if 'school_category' not in st.session_state:
+        st.session_state.school_category = {}
+    if 'frequency_by_category' not in st.session_state:
+        st.session_state.frequency_by_category = {
+            "Experimentální": "5 x týdně",
+            "Semi-experimentální": "2 x týdně"
+        }
 
 # Stránka Výběr prostředí a vybavení
 def page_environment_equipment():
@@ -99,13 +163,56 @@ def page_time_allocation():
 def page_generate_prompt():
     st.title("Generování promptu pro custom GPT model")
     
-    if 'class_grade' not in st.session_state:
-        st.error("Nejprve vyplňte předchozí kroky.")
+    if 'class_grade' not in st.session_state or 'selected_schools' not in st.session_state or not st.session_state.selected_schools:
+        st.error("Nejprve vyplňte předchozí kroky včetně výběru škol.")
         return
     
     equipment_text = ", ".join(st.session_state.equipment)
     # Dynamicky vytvoříme řetězec vybraných kategorií – spojíme volby z "Zdatnost", "Manipulace s předměty" a "Lokomoce"
     selected_categories = ", ".join(st.session_state.fitness + st.session_state.manipulation + st.session_state.locomotion)
+    
+    # Vytvoření přehledu škol a jejich kategorií
+    schools_info = []
+    exp_schools = []
+    semi_exp_schools = []
+    
+    for school in st.session_state.selected_schools:
+        category = st.session_state.school_category[school]
+        frequency = st.session_state.frequency_by_category[category]
+        schools_info.append(f"{school} ({category}, {frequency})")
+        
+        # Rozdělení škol podle kategorií
+        if category == "Experimentální":
+            exp_schools.append(school)
+        else:
+            semi_exp_schools.append(school)
+    
+    schools_text = ", ".join(schools_info)
+    
+    # Výpočet efektivního času pro cvičení (70% z celkového času)
+    prep_effective_time = int(st.session_state.preparatory_time * 0.7)
+    main_effective_time = int(st.session_state.main_time * 0.7)
+    final_effective_time = int(st.session_state.final_time * 0.7)
+    
+    # Vytvoření specifických pokynů podle frekvence hodin
+    exp_instructions = ""
+    semi_exp_instructions = ""
+    
+    if exp_schools:
+        exp_schools_text = ", ".join(exp_schools)
+        exp_instructions = f"""
+- Pro experimentální školy ({exp_schools_text}) s frekvencí 5x týdně:
+  * Hodiny by měly být intenzivnější a zaměřené na systémový rozvoj pohybových dovedností
+  * Každý den v týdnu by měl mít jiné zaměření (např. pondělí - koordinace, úterý - síla, středa - vytrvalost, atd.)
+  * Cvičení by měla být rozmanitější a progresivně náročnější"""
+    
+    if semi_exp_schools:
+        semi_exp_schools_text = ", ".join(semi_exp_schools)
+        semi_exp_instructions = f"""
+- Pro semi-experimentální školy ({semi_exp_schools_text}) s frekvencí 2x týdně:
+  * Hodiny by měly být komplexnější a pokrývat více oblastí v jedné hodině
+  * Zaměřit se na základní pohybové dovednosti a jejich kombinace
+  * Cvičení by měla být přizpůsobena menší frekvenci a zaměřena na efektivitu"""
     
     prompt = f"""Navrhni školní tělovýchovnou hodinu pro {st.session_state.class_grade} základní školy, trvající 45 minut, rozdělenou na:
 1. Přípravnou část (vede {st.session_state.preparatory_leader}) – zaměřenou na zahřívací, mobilizační a koordinační cviky. Použij databázi cviků pro přípravnou část.
@@ -114,11 +221,23 @@ def page_generate_prompt():
 3. Závěrečnou část (vede {st.session_state.final_leader}) – zakončenou společným cvičením zaměřeným na statický strečink, relaxaci a mentální uklidnění. Použij databázi cviků pro závěrečnou část.
 
 Výuka se bude konat v prostředí: {st.session_state.environment} s vybavením: {equipment_text}.
-Časové rozdělení: Přípravná část: {st.session_state.preparatory_time} minut, Hlavní část: {st.session_state.main_time} minut, Závěrečná část: {st.session_state.final_time} minut.
 
-Vedle detailního návrhu jednotlivých částí vytvoř také sekci "Stručný obsah", která shrnuje, jaké cviky a metody byly použity.
+Časové rozdělení: 
+Přípravná část: {st.session_state.preparatory_time} minut celkem, z toho max. {prep_effective_time} minut na samotná cvičení (zbytek času je vyhrazen na přestávky mezi cvičeními, přesun mezi stanovišti, instrukce, atd.)
+Hlavní část: {st.session_state.main_time} minut celkem, z toho max. {main_effective_time} minut na samotná cvičení
+Závěrečná část: {st.session_state.final_time} minut celkem, z toho max. {final_effective_time} minut na samotná cvičení
+
+Tato hodina je určena pro následující školy a jejich kategorie:
+{schools_text}
+
+Specifické pokyny podle frekvence hodin:{exp_instructions}{semi_exp_instructions}
+
+Důležité pokyny:
+1. Navrhni cvičení tak, aby zabrala MAXIMÁLNĚ 70% celkového času každé části. Zbytek času je vyhrazen na přestávky mezi cvičeními, přesun mezi stanovišti, instrukce, atd.
+2. U každého cvičení uveď jeho název, popis a časovou dotaci v minutách.
+3. Vedle detailního návrhu jednotlivých částí vytvoř také sekci "Stručný obsah", která shrnuje, jaké cviky a metody byly použity.
 """
-    st.text_area("Vygenerovaný prompt:", prompt, height=300)
+    st.text_area("Vygenerovaný prompt:", prompt, height=500)
     
     b64 = base64.b64encode(prompt.encode()).decode()
     href = f'<a href="data:file/txt;base64,{b64}" download="prompt.txt">Stáhnout prompt</a>'
@@ -128,6 +247,14 @@ Vedle detailního návrhu jednotlivých částí vytvoř také sekci "Stručný 
 # Stránka Vygenerování písemné přípravy a export (PDF) s rozšířenými poli
 def page_generate_plan():
     st.title("Vygenerování písemné přípravy a export")
+    
+    # Tlačítko pro kompletní vymazání dat na této stránce
+    if st.button("Vymazat vše"):
+        clear_plan_data()
+        if hasattr(st, "experimental_rerun"):
+            st.experimental_rerun()
+        else:
+            st.warning("Data byla vymazána. Obnovte stránku ručně.")
     
     # Načtení excel souboru Podklady.xlsx s možnostmi pro rozevírací nabídky
     try:
@@ -183,7 +310,7 @@ def page_generate_plan():
     else:
         plan_methods = st.text_input("Použité metody:", key="plan_methods")
     
-    # Rozevírací nabídka pro Bezpečnost (původně Bezpečnostní vybavení)
+    # Rozevírací nabídka pro Bezpečnost
     if safety_options:
         safety_selected = st.selectbox("Bezpečnost:", options=safety_options + ["Jiná (zadejte vlastní)"], key="plan_safety_select")
         if safety_selected == "Jiná (zadejte vlastní)":
@@ -233,27 +360,393 @@ Jméno učitele/trenéra: {plan_instructor}
             try:
                 from fpdf import FPDF
             except ImportError:
-                st.error("Není nainstalován modul fpdf. Nainstalujte jej pomocí 'pip install fpdf'.")
+                st.error("Není nainstalován modul fpdf2. Nainstalujte jej pomocí 'pip install fpdf2'.")
             else:
+                # Použití FPDF2 s podporou Unicode a fonty Times
                 pdf = FPDF()
                 pdf.add_page()
-                pdf.set_font("Arial", size=12)
-                for line in full_plan.split('\n'):
-                    pdf.multi_cell(0, 10, line)
-                pdf_output = pdf.output(dest="S").encode("latin1")
-                b64_pdf = base64.b64encode(pdf_output).decode()
-                pdf_href = f'<a href="data:application/pdf;base64,{b64_pdf}" download="priprava.pdf">Stáhnout PDF</a>'
-                st.markdown(pdf_href, unsafe_allow_html=True)
+                
+                # Kontrola, zda existují fonty Times a TimesBd
+                import os
+                times_exists = os.path.exists('times.ttf')
+                timesbd_exists = os.path.exists('timesbd.ttf')
+                
+                if times_exists and timesbd_exists:
+                    # Použití fontů Times a TimesBd
+                    pdf.add_font('Times', '', fname='times.ttf', uni=True)
+                    pdf.add_font('Times', 'B', fname='timesbd.ttf', uni=True)
+                    
+                    # Nastavení okrajů
+                    pdf.set_margins(10, 10, 10)
+                    
+                    # Nadpis s tučným písmem
+                    pdf.set_font('Times', 'B', 16)
+                    pdf.cell(0, 10, plan_title, ln=True, align='C')
+                    pdf.ln(5)
+                    
+                    # Základní informace v tabulce
+                    col_width1 = 50  # Šířka prvního sloupce
+                    col_width2 = 130  # Šířka druhého sloupce
+                    row_height = 8
+                    
+                    # Tabulka pro základní informace
+                    pdf.set_font('Times', 'B', 11)
+                    
+                    # Cíl hodiny
+                    pdf.cell(col_width1, row_height, "Cíl hodiny:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, lesson_goal, border=1)
+                    
+                    # Stručný obsah
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Stručný obsah:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, brief_summary, border=1)
+                    
+                    # Datum
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Datum:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, plan_date.strftime('%Y-%m-%d'), border=1)
+                    
+                    # Místo
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Místo:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, plan_place, border=1)
+                    
+                    # Materiál a vybavení
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Materiál a vybavení:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, plan_material, border=1)
+                    
+                    # Použité metody
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Použité metody:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, plan_methods, border=1)
+                    
+                    # Bezpečnost
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Bezpečnost:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, plan_safety, border=1)
+                    
+                    # Jméno učitele/trenéra
+                    pdf.set_font('Times', 'B', 11)
+                    pdf.cell(col_width1, row_height, "Jméno učitele/trenéra:", border=1)
+                    pdf.set_font('Times', '', 11)
+                    pdf.multi_cell(col_width2, row_height, plan_instructor, border=1)
+                    
+                    pdf.ln(5)
+                    
+                    # Funkce pro parsování cvičení a vytvoření tabulky
+                    def parse_exercises_and_create_table(section_title, section_text):
+                        # Nadpis sekce
+                        pdf.set_font('Times', 'B', 14)
+                        pdf.cell(0, 10, section_title, ln=True)
+                        pdf.ln(2)
+                        
+                        # Záhlaví tabulky cvičení
+                        page_width = pdf.w - 2*pdf.l_margin  # Dostupná šířka stránky
+                        col_width_desc = page_width * 0.8  # 80% šířky pro popis
+                        col_width_time = page_width * 0.2  # 20% šířky pro čas
+                        
+                        pdf.set_font('Times', 'B', 11)
+                        pdf.cell(col_width_desc, row_height, "Název a popis cvičení", border=1)
+                        pdf.cell(col_width_time, row_height, "Čas (min)", border=1, ln=True, align='C')
+                        
+                        # Rozdělení textu na řádky a hledání cvičení
+                        lines = section_text.split('\n')
+                        i = 0
+                        
+                        while i < len(lines):
+                            line = lines[i].strip()
+                            
+                            # Hledáme řádek, který obsahuje název cvičení a časovou dotaci
+                            if line and not line.startswith('---'):
+                                # Pokus o nalezení časové dotace na konci řádku (např. "... (5 min)")
+                                exercise_name = line
+                                exercise_time = ""
+                                
+                                # Hledáme časovou dotaci ve formátu (X min) nebo X min
+                                if "min)" in line:
+                                    parts = line.split("(")
+                                    if len(parts) > 1 and "min)" in parts[-1]:
+                                        exercise_name = "(".join(parts[:-1]).strip()
+                                        exercise_time = parts[-1].strip()
+                                        if exercise_time.endswith(")"):
+                                            exercise_time = exercise_time[:-1]
+                                elif "min" in line:
+                                    parts = line.split()
+                                    for j in range(len(parts)-1):
+                                        if parts[j].isdigit() and parts[j+1] == "min":
+                                            exercise_time = f"{parts[j]} min"
+                                            exercise_name = line.replace(exercise_time, "").strip()
+                                
+                                # Sbíráme popis cvičení z následujících řádků
+                                description = []
+                                j = i + 1
+                                while j < len(lines) and lines[j].strip() and not lines[j].strip().startswith("---"):
+                                    # Kontrola, zda následující řádek není nové cvičení s časovou dotací
+                                    next_line = lines[j].strip()
+                                    if ("min)" in next_line and "(" in next_line) or (" min" in next_line and any(c.isdigit() for c in next_line)):
+                                        break
+                                    description.append(next_line)
+                                    j += 1
+                                
+                                # Přidání řádku do tabulky
+                                pdf.set_font('Times', 'B', 11)
+                                pdf.cell(col_width_desc, row_height, exercise_name, border=1)
+                                pdf.cell(col_width_time, row_height, exercise_time, border=1, ln=True, align='C')
+                                
+                                # Popis cvičení, pokud existuje
+                                if description:
+                                    pdf.set_font('Times', '', 11)
+                                    # Ošetření znaků, které mohou způsobovat problémy
+                                    desc_text = "\n".join(description)
+                                    # Nahrazení speciálních znaků, které mohou způsobovat čtverečky
+                                    desc_text = desc_text.replace('\u2022', '-')  # Nahrazení odrážky pomlčkou
+                                    desc_text = desc_text.replace('\u2013', '-')  # Nahrazení dlouhé pomlčky krátkou
+                                    desc_text = desc_text.replace('\u2014', '-')  # Nahrazení dlouhé pomlčky krátkou
+                                    desc_text = desc_text.replace('\u2018', "'")  # Nahrazení uvozovek
+                                    desc_text = desc_text.replace('\u2019', "'")  # Nahrazení uvozovek
+                                    desc_text = desc_text.replace('\u201c', '"')  # Nahrazení uvozovek
+                                    desc_text = desc_text.replace('\u201d', '"')  # Nahrazení uvozovek
+                                    pdf.multi_cell(col_width_desc + col_width_time, row_height, desc_text, border=1)
+                                
+                                i = j  # Přeskočíme zpracované řádky
+                            else:
+                                i += 1
+                        
+                        pdf.ln(5)
+                    
+                    # Zpracování jednotlivých částí hodiny
+                    parse_exercises_and_create_table("PŘÍPRAVNÁ ČÁST", prep_output)
+                    parse_exercises_and_create_table("HLAVNÍ ČÁST", main_output)
+                    parse_exercises_and_create_table("ZÁVĚREČNÁ ČÁST", final_output)
+                else:
+                    # Pokud fonty Times neexistují, zobrazíme varování
+                    st.warning("Fonty times.ttf a timesbd.ttf nebyly nalezeny. PDF bude vygenerováno s náhradním fontem.")
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    # Nahrazení českých znaků a speciálních znaků
+                    ascii_text = full_plan
+                    # Nahrazení speciálních znaků, které mohou způsobovat čtverečky
+                    ascii_text = ascii_text.replace('\u2022', '-')  # Nahrazení odrážky pomlčkou
+                    ascii_text = ascii_text.replace('\u2013', '-')  # Nahrazení dlouhé pomlčky krátkou
+                    ascii_text = ascii_text.replace('\u2014', '-')  # Nahrazení dlouhé pomlčky krátkou
+                    ascii_text = ascii_text.replace('\u2018', "'")  # Nahrazení uvozovek
+                    ascii_text = ascii_text.replace('\u2019', "'")  # Nahrazení uvozovek
+                    ascii_text = ascii_text.replace('\u201c', '"')  # Nahrazení uvozovek
+                    ascii_text = ascii_text.replace('\u201d', '"')  # Nahrazení uvozovek
+                    # Pak teprve převedeme na ASCII
+                    ascii_text = ascii_text.encode('ascii', 'replace').decode('ascii')
+                    for line in ascii_text.split('\n'):
+                        pdf.multi_cell(0, 10, line)
+                
+                # Export PDF
+                try:
+                    pdf_output = pdf.output(dest="S").encode("latin1") if (times_exists and timesbd_exists) else pdf.output(dest="S")
+                    b64_pdf = base64.b64encode(pdf_output).decode()
+                    pdf_href = f'<a href="data:application/pdf;base64,{b64_pdf}" download="priprava.pdf">Stáhnout PDF</a>'
+                    st.markdown(pdf_href, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Chyba při generování PDF: {e}")
+                    st.info("Zkuste exportovat jako Word, který podporuje české znaky.")
     with col2:
         if st.button("Exportovat jako Word"):
             try:
                 from docx import Document
+                from docx.shared import Cm, Pt
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
             except ImportError:
                 st.error("Není nainstalován modul python-docx. Nainstalujte jej pomocí 'pip install python-docx'.")
             else:
                 document = Document()
-                for line in full_plan.split('\n'):
-                    document.add_paragraph(line)
+                
+                # Nastavení stylu dokumentu - použití fontu Times
+                style = document.styles['Normal']
+                style.font.name = 'Times New Roman'
+                style.font.size = Pt(11)
+                
+                # Nastavení stylů nadpisů
+                for i in range(1, 4):
+                    heading_style = document.styles[f'Heading {i}']
+                    heading_style.font.name = 'Times New Roman'
+                    heading_style.font.bold = True
+                
+                # Nadpis dokumentu
+                heading = document.add_heading(plan_title, level=1)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                # Nastavení šířky stránky pro A4 s většími okraji
+                section = document.sections[0]
+                section.page_width = Cm(21)    # Šířka A4
+                section.page_height = Cm(29.7)  # Výška A4
+                section.left_margin = Cm(3.5)   # Levý okraj - zvětšeno
+                section.right_margin = Cm(3.5)  # Pravý okraj - zvětšeno
+                section.top_margin = Cm(2.5)    # Horní okraj
+                section.bottom_margin = Cm(2.5)  # Dolní okraj
+                
+                # Vytvoření tabulky pro základní informace - upravené šířky pro formát A4
+                info_table = document.add_table(rows=8, cols=2)  # Zvýšení počtu řádků na 8 (přidání samostatného řádku pro Místo)
+                info_table.style = 'Table Grid'
+                info_table.autofit = False
+                
+                # Nastavení šířky sloupců - výrazně zmenšeno pro A4
+                info_table.columns[0].width = Cm(3)     # První sloupec
+                info_table.columns[1].width = Cm(10)    # Druhý sloupec
+                
+                # Naplnění tabulky základními informacemi
+                rows = info_table.rows
+                
+                # Cíl hodiny
+                rows[0].cells[0].text = "Cíl hodiny:"
+                rows[0].cells[1].text = lesson_goal
+                
+                # Stručný obsah
+                rows[1].cells[0].text = "Stručný obsah:"
+                rows[1].cells[1].text = brief_summary
+                
+                # Datum - samostatný řádek
+                rows[2].cells[0].text = "Datum:"
+                rows[2].cells[1].text = plan_date.strftime('%Y-%m-%d')
+                
+                # Místo - samostatný řádek
+                rows[3].cells[0].text = "Místo:"
+                rows[3].cells[1].text = plan_place
+                
+                # Materiál a vybavení - posunuto o jeden řádek níže
+                rows[4].cells[0].text = "Materiál a vybavení:"
+                rows[4].cells[1].text = plan_material
+                
+                # Použité metody - posunuto o jeden řádek níže
+                rows[5].cells[0].text = "Použité metody:"
+                rows[5].cells[1].text = plan_methods
+                
+                # Bezpečnost - posunuto o jeden řádek níže
+                rows[6].cells[0].text = "Bezpečnost:"
+                rows[6].cells[1].text = plan_safety
+                
+                # Jméno učitele/trenéra - posunuto o jeden řádek níže
+                rows[7].cells[0].text = "Jméno učitele/trenéra:"
+                rows[7].cells[1].text = plan_instructor
+                
+                # Nastavení tučného písma pro první sloupec
+                for row in info_table.rows:
+                    for cell in row.cells[:1]:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                run.font.bold = True
+                
+                # Přidání mezery po tabulce
+                document.add_paragraph("")
+                
+                # Funkce pro parsování částí hodiny a vytváření tabulek se 2 sloupci
+                def parse_exercises_and_create_table(section_text, document):
+                    # Přidání nadpisu sekce
+                    document.add_heading(section_text.split('\n')[0] if '\n' in section_text else "Cvičení", level=2)
+                    
+                    # Vytvoření tabulky se 2 sloupci - výrazně zmenšeno pro A4
+                    table = document.add_table(rows=1, cols=2)
+                    table.style = 'Table Grid'
+                    table.autofit = False
+                    
+                    # Nastavení šířky sloupců (85% / 15%) - výrazně zmenšeno pro A4
+                    table.columns[0].width = Cm(11)   # Sloupec pro název a popis cviku
+                    table.columns[1].width = Cm(2)    # Sloupec pro čas
+                    
+                    # Nastavení záhlaví tabulky
+                    hdr_cells = table.rows[0].cells
+                    hdr_cells[0].text = "Název a popis cvičení"
+                    hdr_cells[1].text = "Čas (min)"
+                    
+                    # Nastavení tučného písma pro záhlaví a zarovnání
+                    for i, cell in enumerate(hdr_cells):
+                        for paragraph in cell.paragraphs:
+                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            for run in paragraph.runs:
+                                run.font.bold = True
+                    
+                    # Rozdělení textu na řádky a hledání cvičení
+                    lines = section_text.split('\n')
+                    i = 1  # Přeskočíme nadpis
+                    
+                    while i < len(lines):
+                        line = lines[i].strip()
+                        
+                        # Hledáme řádek, který obsahuje název cvičení a časovou dotaci
+                        if line and not line.startswith('---'):
+                            # Pokus o nalezení časové dotace na konci řádku (např. "... (5 min)")
+                            time_match = None
+                            exercise_name = line
+                            exercise_time = ""
+                            
+                            # Hledáme časovou dotaci ve formátu (X min) nebo X min
+                            if "min)" in line:
+                                parts = line.split("(")
+                                if len(parts) > 1 and "min)" in parts[-1]:
+                                    exercise_name = "(".join(parts[:-1]).strip()
+                                    exercise_time = parts[-1].strip()
+                                    if exercise_time.endswith(")"):
+                                        exercise_time = exercise_time[:-1]
+                            elif "min" in line:
+                                parts = line.split()
+                                for j in range(len(parts)-1):
+                                    if parts[j].isdigit() and parts[j+1] == "min":
+                                        exercise_time = f"{parts[j]} min"
+                                        exercise_name = line.replace(exercise_time, "").strip()
+                            
+                            # Sbíráme popis cvičení z následujících řádků
+                            description = []
+                            j = i + 1
+                            while j < len(lines) and lines[j].strip() and not lines[j].strip().startswith("---"):
+                                # Kontrola, zda následující řádek není nové cvičení s časovou dotací
+                                next_line = lines[j].strip()
+                                if ("min)" in next_line and "(" in next_line) or (" min" in next_line and any(c.isdigit() for c in next_line)):
+                                    break
+                                description.append(next_line)
+                                j += 1
+                            
+                            # Přidání řádku do tabulky
+                            row_cells = table.add_row().cells
+                            
+                            # Název a popis cvičení v prvním sloupci
+                            row_cells[0].text = ""
+                            paragraph = row_cells[0].paragraphs[0]
+                            
+                            # Název cvičení tučně
+                            run = paragraph.add_run(exercise_name)
+                            run.font.bold = True
+                            
+                            # Popis cvičení normálním písmem pod názvem
+                            if description:
+                                desc_text = "\n" + "\n".join(description)
+                                paragraph.add_run(desc_text)
+                            
+                            # Časová dotace zarovnaná na střed v druhém sloupci
+                            row_cells[1].text = exercise_time
+                            for paragraph in row_cells[1].paragraphs:
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            
+                            i = j  # Přeskočíme zpracované řádky
+                        else:
+                            i += 1
+                
+                # Zpracování jednotlivých částí hodiny
+                document.add_heading("PŘÍPRAVNÁ ČÁST", level=2)
+                parse_exercises_and_create_table(prep_output, document)
+                
+                document.add_heading("HLAVNÍ ČÁST", level=2)
+                parse_exercises_and_create_table(main_output, document)
+                
+                document.add_heading("ZÁVĚREČNÁ ČÁST", level=2)
+                parse_exercises_and_create_table(final_output, document)
+                
+                # Uložení dokumentu
                 f = io.BytesIO()
                 document.save(f)
                 f.seek(0)
@@ -290,11 +783,60 @@ def page_saved_plans():
                 st.session_state.final_prompt = content
                 st.success("Příprava načtena do editoru. Přejděte na stránku 'Vygenerování písemné přípravy a export'.")
 
+# Stránka Výběr škol a kategorií
+def page_school_selection():
+    st.title("Výběr škol a kategorií")
+    
+    # Načtení škol z Excel souboru "Podklady.xlsx" ze sloupce "Misto"
+    try:
+        podklady = pd.read_excel("Podklady.xlsx", engine='openpyxl')
+        school_options = sorted(podklady["Misto"].dropna().unique())
+        
+        # Získání kategorií škol ze sloupce "Kategorie školy"
+        categories = sorted(podklady["Kategorie školy"].dropna().unique())
+        if not categories:
+            categories = ["Experimentální", "Semi-experimentální"]
+    except Exception as e:
+        st.error(f"Nepodařilo se načíst školy z excel souboru Podklady.xlsx: {e}")
+        school_options = ["ZŠ Komenského", "ZŠ Masarykova", "ZŠ Tyršova"]  # záložní možnosti
+        categories = ["Experimentální", "Semi-experimentální"]
+    
+    # Výběr škol
+    selected_schools = st.multiselect("Vyberte školy:", school_options, 
+                                    default=st.session_state.selected_schools if st.session_state.selected_schools else [])
+    st.session_state.selected_schools = selected_schools
+    
+    # Pro každou vybranou školu nastavit kategorii
+    st.subheader("Kategorie škol")
+    st.write("Experimentální školy mají tělovýchovnou hodinu 5 x týdně")
+    st.write("Semi-experimentální školy mají tělovýchovnou hodinu 2 x týdně")
+    
+    # Vytvoření nebo aktualizace slovníku kategorií škol
+    for school in selected_schools:
+        if school not in st.session_state.school_category:
+            st.session_state.school_category[school] = "Experimentální"  # Výchozí hodnota
+        
+        category = st.radio(f"Kategorie pro {school}:", categories, 
+                           index=categories.index(st.session_state.school_category[school]) if st.session_state.school_category[school] in categories else 0,
+                           key=f"category_{school}")
+        st.session_state.school_category[school] = category
+    
+    # Zobrazení přehledu
+    if selected_schools:
+        st.subheader("Přehled vybraných škol a jejich kategorií")
+        for school in selected_schools:
+            category = st.session_state.school_category[school]
+            frequency = st.session_state.frequency_by_category[category]
+            st.write(f"• {school}: {category} ({frequency})")
+    else:
+        st.warning("Nebyly vybrány žádné školy.")
+
 # Hlavní funkce aplikace
 def main():
     st.sidebar.title("Navigace")
     pages = {
         "Úvod": page_intro,
+        "Výběr škol a kategorií": page_school_selection,
         "Výběr prostředí a vybavení": page_environment_equipment,
         "Nastavení rolí": page_roles,
         "Výběr cvičebních konstruktů": page_exercise_constructs,
