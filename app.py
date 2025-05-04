@@ -931,6 +931,14 @@ def page_admin_resources():
                             if st.button("Uložit", key=f"save_{key}_{res['id']}"):
                                 if update_resource(res["id"], edited):
                                     st.success("Aktualizováno.")
+                        # Tlačítko pro smazání podkladu
+                        if st.button("Smazat", key=f"delete_{key}_{res['id']}"):
+                            if delete_resource(res["id"]):
+                                st.session_state["resource_deleted"] = True
+                                st.success("Podklad byl smazán.")
+                                st.experimental_rerun()
+                            else:
+                                st.error("Nepodařilo se smazat podklad.")
 
 def page_admin_exercises():
     st.title("Správa cviků")
