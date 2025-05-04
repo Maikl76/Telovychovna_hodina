@@ -924,13 +924,6 @@ def page_admin_resources():
             else:
                 for res in resources:
                     with st.expander(res["value"]):
-                        col1, col2 = st.columns([3,1])
-                        with col1:
-                            edited = st.text_input("Hodnota:", value=res["value"], key=f"edit_{key}_{res['id']}")
-                        with col2:
-                            if st.button("Uložit", key=f"save_{key}_{res['id']}"):
-                                if update_resource(res["id"], edited):
-                                    st.success("Aktualizováno.")
                         # Tlačítko pro smazání podkladu
                         if st.button("Smazat", key=f"delete_{key}_{res['id']}"):
                             if delete_resource(res["id"]):
