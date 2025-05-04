@@ -931,24 +931,6 @@ def page_admin_resources():
                             if st.button("Uložit", key=f"save_{key}_{res['id']}"):
                                 if update_resource(res["id"], edited):
                                     st.success("Aktualizováno.")
-    # Kontrola, zda je nastavené heslo v secrets
-    try:
-        admin_password = st.secrets["admin"]["password"]
-    except Exception:
-        admin_password = "admin123"  # Výchozí heslo pro vývoj
-        st.warning("Není nastavené administrátorské heslo v secrets. Používá se výchozí heslo.")
-    
-    password = st.text_input("Heslo", type="password")
-    
-    if st.button("Přihlásit"):
-        if password == admin_password:
-            st.session_state.admin_logged_in = True
-            st.success("Přihlášení úspěšné!")
-            st.rerun()
-        else:
-            st.error("Nesprávné heslo!")
-    
-    return st.session_state.get("admin_logged_in", False)
 
 def page_admin_exercises():
     st.title("Správa cviků")
