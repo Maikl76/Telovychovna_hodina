@@ -1,12 +1,20 @@
 import streamlit as st
 import json
 from typing import Dict, Any, List, Optional
-from transformers import LlamaTokenizer, LlamaForCausalLM
-import torch
+try:
+    from transformers import LlamaTokenizer, LlamaForCausalLM
+    import torch
+except ImportError:
+    LlamaTokenizer = None
+    LlamaForCausalLM = None
+    torch = None
 
 @st.cache_resource
 def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-instant-128k"):
     """Načte a vrátí tokenizer a model Llama 3.1 8B Instant 128k."""
+    if LlamaTokenizer is None or LlamaForCausalLM is None or torch is None:
+        st.error("Nainstalujte prosím knihovny transformers a torch pomocí `pip install transformers torch`.")
+        return None, None
     tokenizer = LlamaTokenizer.from_pretrained(model_id)
     model = LlamaForCausalLM.from_pretrained(
         model_id,
@@ -22,6 +30,8 @@ def get_groq_completion(prompt: str, model: str = "meta-llama/Llama-3-8b-instant
     """
     # Lokální inference Llama modelu
     tokenizer, llm = load_llama_model(model)
+    if tokenizer is None or llm is None:
+        return None
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {k: v.to(llm.device) for k, v in inputs.items()}
     outputs = llm.generate(
