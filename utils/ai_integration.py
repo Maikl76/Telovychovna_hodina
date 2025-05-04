@@ -30,9 +30,10 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
     """
     import requests
     import streamlit as st
-    api_key = st.secrets.get("groq_api_key")
-    if not api_key:
-        st.error("Chybí API klíč pro Groq v .streamlit/secrets.toml (groq_api_key)")
+    try:
+        api_key = st.secrets["groq"]["api_key"]
+    except Exception:
+        st.error("Chybí sekce [groq] nebo položka api_key v .streamlit/secrets.toml.")
         return None
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
