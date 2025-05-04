@@ -914,8 +914,9 @@ def page_admin_resources():
                 submitted = st.form_submit_button("Přidat")
                 if submitted:
                     if add_resource(key, new_val):
+                        st.session_state["resource_added"] = True
                         st.success("Podklad přidán.")
-                        st.experimental_rerun()
+                        # rerun provedeme až na začátku funkce
                     else:
                         st.error("Nepodařilo se přidat podklad.")
             resources = get_resources(key)
