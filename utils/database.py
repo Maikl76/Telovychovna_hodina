@@ -390,3 +390,69 @@ def get_subcategories(construct_type: str) -> List[str]:
     elif construct_type == "Lokomoce":
         return ["Chůze", "Běh", "Skoky", "Lezení", "Plazení"]
     return []
+
+# Resource management: CRUD functions for podklady
+
+def get_resources(resource_type: str) -> List[Dict[str, str]]:
+    """
+    Získá seznam podkladů z tabulky resources podle typu.
+    """
+    supabase = _get_supabase_client()
+    if supabase:
+        try:
+            response = supabase.table("resources").select("*").eq("resource_type", resource_type).order("value", {"ascending": True}).execute()
+            return response.data
+        except Exception as e:
+            st.error(f"Chyba při načítání podkladů z Supabase: {e}")
+    return []
+
+def add_resource(resource_type: str, value: str) -> bool:
+    """
+    Přidá nový podklad do tabulky resources.
+    """
+    if not value:
+        st.error("Hodnota podkladu nesmí být prázdná.")
+        return False
+    supabase = _get_supabase_client()
+    if supabase:
+        try:
+            supabase.table("resources").insert({"resource_type": resource_type, "value": value}).execute()
+            return True
+        except Exception as e:
+            st.error(f"Chyba při přidávání podkladu: {e}")
+    else:
+        st.error("Supabase klient není dostupný.")
+    return False
+
+def update_resource(resource_id: str, value: str) -> bool:
+    """
+    Aktualizuje existující podklad podle ID.
+    """
+    if not value:
+        st.error("Hodnota podkladu nesmí být prázdná.")
+        return False
+    supabase = _get_supabase_client()
+    if supabase:
+        try:
+            supabase.table("resources").update({"value": value}).eq("id", resource_id).execute()
+            return True
+        except Exception as e:
+            st.error(f"Chyba při aktualizaci podkladu: {e}")
+    else:
+        st.error("Supabase klient není dostupný.")
+    return False
+
+def delete_resource(resource_id: str) -> bool:
+    """
+    Odstraní podklad podle ID.
+    """
+    supabase = _get_supabase_client()
+    if supabase:
+        try:
+            supabase.table("resources").delete().eq("id", resource_id).execute()
+            return True
+        except Exception as e:
+            st.error(f"Chyba při mazání podkladu: {e}")
+    else:
+        st.error("Supabase klient není dostupný.")
+    return False
