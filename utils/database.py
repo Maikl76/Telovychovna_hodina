@@ -400,7 +400,7 @@ def get_resources(resource_type: str) -> List[Dict[str, str]]:
     supabase = _get_supabase_client()
     if supabase:
         try:
-            response = supabase.table("resources").select("*").eq("resource_type", resource_type).order("value", {"ascending": True}).execute()
+            response = supabase.table("resources").select("*").eq("resource_type", resource_type).order("value", True).execute()
             return response.data
         except Exception as e:
             st.error(f"Chyba při načítání podkladů z Supabase: {e}")
