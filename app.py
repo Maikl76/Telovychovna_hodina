@@ -97,6 +97,7 @@ def page_environment_equipment():
     def load_resource_options(resource_type):
         resources = get_resources(resource_type)
         if resources:
+            # Řazení podle hodnoty abecedně
             return sorted([res['value'] for res in resources])
         else:
             st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
@@ -139,6 +140,7 @@ def page_exercise_constructs():
     def load_resource_options(resource_type):
         resources = get_resources(resource_type)
         if resources:
+            # Řazení podle hodnoty abecedně
             return sorted([res['value'] for res in resources])
         else:
             st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
@@ -280,6 +282,7 @@ def page_generate_plan():
     def load_resource_options(resource_type):
         resources = get_resources(resource_type)
         if resources:
+            # Řazení podle hodnoty abecedně
             return sorted([res['value'] for res in resources])
         else:
             st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
@@ -820,6 +823,7 @@ def page_school_selection():
     def load_resource_options(resource_type):
         resources = get_resources(resource_type)
         if resources:
+            # Řazení podle hodnoty abecedně
             return sorted([res['value'] for res in resources])
         else:
             st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
