@@ -1061,6 +1061,7 @@ def main():
         # Administrátorská část
         if not admin_login():
             st.info("Pro přístup do administrace se musíte přihlásit.")
+            return  # Zabrání vykreslení dalších částí administrace
         else:
             admin_pages = {
                 "Správa cviků": page_admin_exercises,
