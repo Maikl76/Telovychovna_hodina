@@ -24,9 +24,9 @@ def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-instant-128k"):
     )
     return tokenizer, model
 
-def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[str]:
+def get_groq_completion(prompt: str, model: str = "llama-3-8b-instant") -> Optional[str]:
     """
-    Získá odpověď od Groq API (Llama 3) pomocí HTTP requestu.
+    Získá odpověď od Groq API (Llama 3.1 8B Instant) pomocí HTTP requestu, odpověď bude vždy v češtině.
     """
     import requests
     import streamlit as st
@@ -40,6 +40,9 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
+    # Přidej instrukci k promptu, aby odpověď byla v češtině
+    if "česky" not in prompt.lower() and "českém jazyce" not in prompt.lower():
+        prompt += "\nOdpověz česky."
     data = {
         "model": model,
         "messages": [
