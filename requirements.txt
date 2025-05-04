@@ -8,3 +8,6 @@ requests>=2.25.0
 supabase>=2.0.0
 transformers>=4.51.3
 torch>=2.7.0
+sentencepiece>=0.1.99
+accelerate>=0.27.2
+safetensors>=0.4.2
