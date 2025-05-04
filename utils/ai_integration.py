@@ -3,8 +3,14 @@ import requests
 import json
 import os
 from typing import Dict, Any, List, Optional
+try:
+    from transformers import LlamaForCausalLM, LlamaTokenizer
+    import torch
+except ImportError:
+    LlamaForCausalLM = None
+    LlamaTokenizer = None
 
-def get_groq_completion(prompt: str, model: str = "llama-3.1-8b-instant") -> Optional[str]:
+def get_groq_completion(prompt: str, model: str = "meta-llama/Llama-3-8b-instant") -> Optional[str]:
     """
     Získá odpověď z Groq API.
     
@@ -19,6 +25,17 @@ def get_groq_completion(prompt: str, model: str = "llama-3.1-8b-instant") -> Opt
     if os.environ.get("STREAMLIT_TEST_MODE") == "true":
         return "Toto je ukázková odpověď z AI modelu."
     
+    # Local inference for Llama
+    if model.startswith("meta-llama") or model.startswith("llama"):
+        if LlamaTokenizer is None:
+            st.error("Install transformers and torch to use Llama: pip install transformers torch")
+            return None
+        tokenizer = LlamaTokenizer.from_pretrained(model)
+        llama_model = LlamaForCausalLM.from_pretrained(model, device_map="auto", torch_dtype=torch.float16)
+        inputs = tokenizer(prompt, return_tensors="pt")
+        outputs = llama_model.generate(**inputs, max_new_tokens=1000)
+        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    
     # Získání API klíče
     try:
         api_key = st.secrets["groq"]["api_key"]
@@ -26,8 +43,8 @@ def get_groq_completion(prompt: str, model: str = "llama-3.1-8b-instant") -> Opt
         st.error("Chybí API klíč pro Groq. Nastavte jej v .streamlit/secrets.toml nebo v Streamlit Cloud.")
         return None
     
-    # API endpoint (corrected path)
-    api_url = "https://api.groq.com/v1/openai/chat/completions"
+    # API endpoint
+    api_url = "https://api.groq.com/openai/v1/chat/completions"
     
     # Hlavičky požadavku
     headers = {
