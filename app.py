@@ -864,8 +864,9 @@ def page_school_selection():
 
 # Administrátorské stránky – Správa podkladů
 def page_admin_resources():
-    if st.session_state.get("resource_deleted"):
-        del st.session_state["resource_deleted"]
+    if st.session_state.get("resource_deleted") or st.session_state.get("resource_added"):
+        st.session_state.pop("resource_deleted", None)
+        st.session_state.pop("resource_added", None)
         st.experimental_rerun()
     st.title("Správa podkladů")
     try:
@@ -910,22 +911,6 @@ def page_admin_resources():
                             if st.button("Uložit", key=f"save_{key}_{res['id']}"):
                                 if update_resource(res["id"], edited):
                                     st.success("Aktualizováno.")
-                                    st.experimental_rerun()
-                                else:
-                                    st.error("Nepodařilo se aktualizovat.")
-                            if st.button("Smazat", key=f"del_{key}_{res['id']}"):
-                                if delete_resource(res["id"]):
-                                    st.session_state.resource_deleted = True
-                                    st.success("Odstraněno.")
-                                    st.stop()
-                                else:
-                                    st.error("Nepodařilo se odstranit.")
-
-# Administrátorské stránky
-
-def admin_login():
-    st.title("Administrátorské přihlášení")
-    
     # Kontrola, zda je nastavené heslo v secrets
     try:
         admin_password = st.secrets["admin"]["password"]
