@@ -4,7 +4,7 @@ import json
 import os
 from typing import Dict, Any, List, Optional
 
-def get_groq_completion(prompt: str, model: str = "llama3.1-8b-instant") -> Optional[str]:
+def get_groq_completion(prompt: str, model: str = "llama-3.1-8b-instant") -> Optional[str]:
     """
     Získá odpověď z Groq API.
     
