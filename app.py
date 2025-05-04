@@ -227,7 +227,7 @@ Přípravná část: {st.session_state.preparatory_time} minut celkem, z toho ma
 Hlavní část: {st.session_state.main_time} minut celkem, z toho max. {main_effective_time} minut na samotná cvičení
 Závěrečná část: {st.session_state.final_time} minut celkem, z toho max. {final_effective_time} minut na samotná cvičení
 
-Tato hodina je určena pro následující školy a jejich kategorie:
+Tato hodina je určena pro následujících škol a jejich kategorie:
 {schools_text}
 
 Specifické pokyny podle frekvence hodin:{exp_instructions}{semi_exp_instructions}
@@ -451,6 +451,8 @@ Jméno učitele/trenéra: {plan_instructor}
                         col_width_time = page_width * 0.2  # 20% šířky pro čas
                         
                         pdf.set_font('Times', 'B', 11)
+                        
+                        # Cvičení
                         pdf.cell(col_width_desc, row_height, "Název a popis cvičení", border=1)
                         pdf.cell(col_width_time, row_height, "Čas (min)", border=1, ln=True, align='C')
                         
@@ -828,6 +830,61 @@ def page_school_selection():
     else:
         st.warning("Nebyly vybrány žádné školy.")
 
+# Administrátorské stránky – Správa podkladů
+def page_admin_resources():
+    st.title("Správa podkladů")
+    try:
+        from utils.database import get_resources, add_resource, update_resource, delete_resource
+    except ImportError:
+        st.error("Nepodařilo se načíst modul database.py. Zkontrolujte, zda je soubor správně umístěn v adresáři utils.")
+        return
+    resource_types = [
+        ("Vybavení", "Vybaveni"),
+        ("Zdatnost", "Zdatnost"),
+        ("Manipulace s předměty", "Manipulace s predmety"),
+        ("Lokomoce", "Lokomoce"),
+        ("Cíl", "Cil"),
+        ("Místo", "Misto"),
+        ("Bezpečnost", "Bezpecnost"),
+        ("Metody", "Metody"),
+        ("Kategorie školy", "Kategorie školy")
+    ]
+    tabs = st.tabs([label for label, key in resource_types])
+    for (label, key), tab in zip(resource_types, tabs):
+        with tab:
+            st.subheader(label)
+            with st.form(f"add_{key}"):
+                new_val = st.text_input("Nový podklad:")
+                submitted = st.form_submit_button("Přidat")
+                if submitted:
+                    if add_resource(key, new_val):
+                        st.success("Podklad přidán.")
+                        st.experimental_rerun()
+                    else:
+                        st.error("Nepodařilo se přidat podklad.")
+            resources = get_resources(key)
+            if not resources:
+                st.info("Žádné podklady.")
+            else:
+                for res in resources:
+                    with st.expander(res["value"]):
+                        col1, col2 = st.columns([3,1])
+                        with col1:
+                            edited = st.text_input("Hodnota:", value=res["value"], key=f"edit_{key}_{res['id']}")
+                        with col2:
+                            if st.button("Uložit", key=f"save_{key}_{res['id']}"):
+                                if update_resource(res["id"], edited):
+                                    st.success("Aktualizováno.")
+                                    st.experimental_rerun()
+                                else:
+                                    st.error("Nepodařilo se aktualizovat.")
+                            if st.button("Smazat", key=f"del_{key}_{res['id']}"):
+                                if delete_resource(res["id"]):
+                                    st.success("Odstraněno.")
+                                    st.experimental_rerun()
+                                else:
+                                    st.error("Nepodařilo se odstranit.")
+
 # Administrátorské stránky
 
 def admin_login():
@@ -966,7 +1023,8 @@ def main():
         else:
             admin_pages = {
                 "Správa cviků": page_admin_exercises,
-                "Vytvoření cviku s AI": page_admin_ai_exercise
+                "Vytvoření cviku s AI": page_admin_ai_exercise,
+                "Správa podkladů": page_admin_resources,
             }
             admin_choice = st.sidebar.radio("Administrace:", list(admin_pages.keys()))
             admin_pages[admin_choice]()
