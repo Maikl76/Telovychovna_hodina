@@ -831,22 +831,148 @@ def page_school_selection():
     else:
         st.warning("Nebyly vybrány žádné školy.")
 
+# Administrátorské stránky
+
+def admin_login():
+    st.title("Administrátorské přihlášení")
+    
+    # Kontrola, zda je nastavené heslo v secrets
+    try:
+        admin_password = st.secrets["admin"]["password"]
+    except Exception:
+        admin_password = "admin123"  # Výchozí heslo pro vývoj
+        st.warning("Není nastavené administrátorské heslo v secrets. Používá se výchozí heslo.")
+    
+    password = st.text_input("Heslo", type="password")
+    
+    if st.button("Přihlásit"):
+        if password == admin_password:
+            st.session_state.admin_logged_in = True
+            st.success("Přihlášení úspěšné!")
+            st.experimental_rerun()
+        else:
+            st.error("Nesprávné heslo!")
+    
+    return st.session_state.get("admin_logged_in", False)
+
+def page_admin_exercises():
+    st.title("Správa cviků")
+    
+    try:
+        from utils.database import get_exercises, delete_exercise, get_exercise_categories
+    except ImportError:
+        st.error("Nepodařilo se načíst modul database.py. Zkontrolujte, zda je soubor správně umístěn v adresáři utils.")
+        return
+    
+    # Získání cviků z databáze
+    exercises = get_exercises()
+    
+    if not exercises:
+        st.info("Zatím nejsou žádné cviky v databázi.")
+    else:
+        st.write(f"Počet cviků v databázi: {len(exercises)}")
+        
+        for ex in exercises:
+            with st.expander(f"{ex['name']} ({ex['location']})"):
+                st.write(f"**Popis:** {ex['description']}")
+                st.write(f"**Materiál:** {', '.join(ex['materials'])}")
+                
+                # Získání kategorií cviku
+                categories = get_exercise_categories(ex['id'])
+                if categories:
+                    st.write("**Kategorie:**")
+                    for cat in categories:
+                        st.write(f"- {cat['construct_type']}: {cat['subcategory']}")
+                
+                if st.button(f"Smazat cvik #{ex['id']}", key=f"delete_{ex['id']}"):
+                    if delete_exercise(ex['id']):
+                        st.success("Cvik byl smazán.")
+                        st.experimental_rerun()
+                    else:
+                        st.error("Nepodařilo se smazat cvik.")
+
+def page_admin_ai_exercise():
+    st.title("Vytvoření cviku s pomocí AI")
+    
+    try:
+        from utils.ai_integration import generate_exercise_suggestion
+        from utils.database import add_exercise, get_construct_types, get_subcategories
+    except ImportError:
+        st.error("Nepodařilo se načíst potřebné moduly. Zkontrolujte, zda jsou soubory správně umístěny v adresáři utils.")
+        return
+    
+    construct_type = st.selectbox("Typ konstruktu:", get_construct_types())
+    subcategory = st.selectbox("Podkategorie:", get_subcategories(construct_type))
+    location = st.selectbox("Místo:", ["Tělocvična", "Hřiště", "Obojí"])
+    materials_input = st.text_input("Materiál (oddělený čárkami):")
+    materials = [m.strip() for m in materials_input.split(",") if m.strip()] if materials_input else []
+    
+    if st.button("Vygenerovat návrh cviku"):
+        with st.spinner("Generuji návrh..."):
+            suggestion = generate_exercise_suggestion(
+                construct_type, subcategory, location, materials
+            )
+        
+        if suggestion:
+            st.success("Návrh byl vygenerován!")
+            
+            name = st.text_input("Název cviku:", value=suggestion.get("name", ""))
+            description = st.text_area("Popis cviku:", value=suggestion.get("description", ""))
+            
+            if st.button("Uložit cvik"):
+                if add_exercise(
+                    name, description, location, materials,
+                    [{"construct_type": construct_type, "subcategory": subcategory}]
+                ):
+                    st.success("Cvik byl úspěšně uložen!")
+                    st.experimental_rerun()
+                else:
+                    st.error("Nepodařilo se uložit cvik.")
+        else:
+            st.error("Nepodařilo se vygenerovat návrh cviku. Zkuste to znovu nebo upravte parametry.")
+
 # Hlavní funkce aplikace
 def main():
-    st.sidebar.title("Navigace")
-    pages = {
-        "Úvod": page_intro,
-        "Výběr škol a kategorií": page_school_selection,
-        "Výběr prostředí a vybavení": page_environment_equipment,
-        "Nastavení rolí": page_roles,
-        "Výběr cvičebních konstruktů": page_exercise_constructs,
-        "Časové rozdělení hodiny": page_time_allocation,
-        "Generování promptu": page_generate_prompt,
-        "Vygenerování písemné přípravy a export": page_generate_plan,
-        "Uložené přípravy": page_saved_plans
-    }
-    choice = st.sidebar.radio("Vyberte stránku:", list(pages.keys()))
-    pages[choice]()
+    # Inicializace session state
+    if "admin_logged_in" not in st.session_state:
+        st.session_state.admin_logged_in = False
+    
+    # Hlavní menu
+    st.sidebar.title("Tělovýchovná jednotka")
+    app_mode = st.sidebar.selectbox(
+        "Vyberte režim:",
+        ["Vytvoření hodiny", "Administrator"]
+    )
+    
+    # Rozdělení podle režimu
+    if app_mode == "Vytvoření hodiny":
+        # Původní workflow pro vytvoření hodiny
+        st.sidebar.title("Navigace")
+        pages = {
+            "Úvod": page_intro,
+            "Výběr škol a kategorií": page_school_selection,
+            "Výběr prostředí a vybavení": page_environment_equipment,
+            "Nastavení rolí": page_roles,
+            "Výběr cvičebních konstruktů": page_exercise_constructs,
+            "Časové rozdělení hodiny": page_time_allocation,
+            "Generování promptu": page_generate_prompt,
+            "Vygenerování písemné přípravy a export": page_generate_plan,
+            "Uložené přípravy": page_saved_plans
+        }
+        choice = st.sidebar.radio("Vyberte stránku:", list(pages.keys()))
+        pages[choice]()
+    
+    elif app_mode == "Administrator":
+        # Administrátorská část
+        if not admin_login():
+            st.info("Pro přístup do administrace se musíte přihlásit.")
+        else:
+            admin_pages = {
+                "Správa cviků": page_admin_exercises,
+                "Vytvoření cviku s AI": page_admin_ai_exercise
+            }
+            admin_choice = st.sidebar.radio("Administrace:", list(admin_pages.keys()))
+            admin_pages[admin_choice]()
 
 if __name__ == '__main__':
     main()
