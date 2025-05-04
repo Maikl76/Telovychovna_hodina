@@ -862,6 +862,26 @@ def page_school_selection():
     else:
         st.warning("Nebyly vybrány žádné školy.")
 
+# Administrátorské přihlášení
+
+def admin_login():
+    st.title("Administrátorské přihlášení")
+    # Kontrola, zda je nastavené heslo v secrets
+    try:
+        admin_password = st.secrets["admin"]["password"]
+    except Exception:
+        admin_password = "admin123"  # Výchozí heslo pro vývoj
+        st.warning("Není nastavené administrátorské heslo v secrets. Používá se výchozí heslo.")
+    password = st.text_input("Heslo", type="password")
+    if st.button("Přihlásit"):
+        if password == admin_password:
+            st.session_state.admin_logged_in = True
+            st.success("Přihlášení úspěšné!")
+            st.rerun()
+        else:
+            st.error("Nesprávné heslo!")
+    return st.session_state.get("admin_logged_in", False)
+
 # Administrátorské stránky – Správa podkladů
 def page_admin_resources():
     if st.session_state.get("resource_deleted") or st.session_state.get("resource_added"):
