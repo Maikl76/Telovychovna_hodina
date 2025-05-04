@@ -1,59 +1,36 @@
 import streamlit as st
-import requests
 import json
-import os
 from typing import Dict, Any, List, Optional
+from transformers import LlamaTokenizer, LlamaForCausalLM
+import torch
 
-def get_groq_completion(prompt: str, model: str = "llama-3.1-8b-instant") -> Optional[str]:
+@st.cache_resource
+def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-instant-128k"):
+    """Načte a vrátí tokenizer a model Llama 3.1 8B Instant 128k."""
+    tokenizer = LlamaTokenizer.from_pretrained(model_id)
+    model = LlamaForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        max_seq_len=131072
+    )
+    return tokenizer, model
+
+def get_groq_completion(prompt: str, model: str = "meta-llama/Llama-3-8b-instant-128k") -> Optional[str]:
     """
-    Získá odpověď z Groq API.
-    
-    Args:
-        prompt: Textový prompt pro AI model
-        model: Název modelu k použití
-        
-    Returns:
-        Odpověď z AI modelu nebo None v případě chyby
+    Získá odpověď z lokálního Llama 3.1 8B Instant 128k modelu.
     """
-    # Pokud jsme v testovacím režimu, vrátíme ukázkovou odpověď
-    if os.environ.get("STREAMLIT_TEST_MODE") == "true":
-        return "Toto je ukázková odpověď z AI modelu."
-    
-    # Získání API klíče
-    try:
-        api_key = st.secrets["groq"]["api_key"]
-    except Exception:
-        st.error("Chybí API klíč pro Groq. Nastavte jej v .streamlit/secrets.toml nebo v Streamlit Cloud.")
-        return None
-    
-    # API endpoint
-    api_url = "https://api.groq.com/openai/v1/chat/completions"
-    
-    # Hlavičky požadavku
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    # Data požadavku
-    data = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 1000
-    }
-    
-    try:
-        # Odeslání požadavku
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()  # Vyvolá výjimku, pokud status kód není 2xx
-        
-        # Zpracování odpovědi
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        st.error(f"Chyba při komunikaci s Groq API: {e}")
-        return None
+    # Lokální inference Llama modelu
+    tokenizer, llm = load_llama_model(model)
+    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs = {k: v.to(llm.device) for k, v in inputs.items()}
+    outputs = llm.generate(
+        **inputs,
+        max_new_tokens=1024,
+        temperature=0.7,
+        do_sample=False
+    )
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 def generate_exercise_suggestion(
     construct_type: str, 
