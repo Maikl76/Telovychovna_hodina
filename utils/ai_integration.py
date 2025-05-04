@@ -24,23 +24,37 @@ def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-instant-128k"):
     )
     return tokenizer, model
 
-def get_groq_completion(prompt: str, model: str = "meta-llama/Llama-3-8b-instant-128k") -> Optional[str]:
+def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[str]:
     """
-    Získá odpověď z lokálního Llama 3.1 8B Instant 128k modelu.
+    Získá odpověď od Groq API (Llama 3) pomocí HTTP requestu.
     """
-    # Lokální inference Llama modelu
-    tokenizer, llm = load_llama_model(model)
-    if tokenizer is None or llm is None:
+    import requests
+    import streamlit as st
+    api_key = st.secrets.get("groq_api_key")
+    if not api_key:
+        st.error("Chybí API klíč pro Groq v .streamlit/secrets.toml (groq_api_key)")
         return None
-    inputs = tokenizer(prompt, return_tensors="pt")
-    inputs = {k: v.to(llm.device) for k, v in inputs.items()}
-    outputs = llm.generate(
-        **inputs,
-        max_new_tokens=1024,
-        temperature=0.7,
-        do_sample=False
-    )
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 1024,
+        "temperature": 0.7
+    }
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    except Exception as e:
+        st.error(f"Chyba při volání Groq API: {e}")
+        return None
 
 def generate_exercise_suggestion(
     construct_type: str, 
