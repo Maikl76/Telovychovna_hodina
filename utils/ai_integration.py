@@ -26,8 +26,8 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-instant-128k") -> O
         st.error("Chybí API klíč pro Groq. Nastavte jej v .streamlit/secrets.toml nebo v Streamlit Cloud.")
         return None
     
-    # API endpoint
-    api_url = "https://api.groq.com/openai/v1/chat/completions"
+    # API endpoint (corrected path)
+    api_url = "https://api.groq.com/v1/openai/chat/completions"
     
     # Hlavičky požadavku
     headers = {
