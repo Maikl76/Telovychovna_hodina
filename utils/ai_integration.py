@@ -10,13 +10,17 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
     """
     try:
         api_key = st.secrets["groq"]["api_key"]
-        url     = st.secrets["groq"]["url"]
-    except Exception:
+        url = st.secrets["groq"]["url"]
+    except KeyError:
         st.error("Chybí [groq] v secrets.toml.")
         return None
 
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    # přidej instrukci česky
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    # Ujistíme se, že požadujeme odpověď česky
     if "česky" not in prompt.lower():
         prompt += "\nOdpověz česky."
 
@@ -24,8 +28,9 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 1024,
-        "temperature": 0.7
+        "temperature": 0.7,
     }
+
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=60)
         r.raise_for_status()
@@ -34,63 +39,51 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
         st.error(f"Chyba volání Groq API: {e}")
         return None
 
-# --- Generování jednoho cviku (existující) ---
-def generate_exercise_suggestion(
-    construct_type: str,
-    subcategory: str,
-    location: str,
-    materials: List[str] = None
-) -> Dict[str, Any]:
-    # ... (ponechávám bez změny) ...
 
-# --- Optimalizace existujícího plánu cviků (existující) ---
-def optimize_exercise_plan(exercises: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    # ... (ponechávám bez změny) ...
-
-# --- NOVÉ: Generování celé lekce ---
+# --- Sestavení promptu pro celou lekci ---
 def build_lesson_prompt(
     series_meta: Dict[str, Any],
     current_params: Dict[str, Any],
-    previous_lessons: List[Dict[str, Any]]
+    previous_lessons: List[Dict[str, Any]],
 ) -> str:
     """
     Sestaví prompt, který vezme historii lekcí,
     všechny parametry a dostupné cviky z current_params.
     """
-    return f"""
-Jsi pedagogický asistent pro TV hodiny. Série meta:
-{json.dumps(series_meta, ensure_ascii=False, indent=2)}
+    return (
+        f"Jsi pedagogický asistent pro TV hodiny. Série meta:\n"
+        f"{json.dumps(series_meta, ensure_ascii=False, indent=2)}\n\n"
+        f"Dosud vedené lekce:\n"
+        f"{json.dumps(previous_lessons, ensure_ascii=False, indent=2)}\n\n"
+        f"Aktuální parametry:\n"
+        f"{json.dumps(current_params, ensure_ascii=False, indent=2)}\n\n"
+        "Vygeneruj lekci ve formátu JSON:\n"
+        '{\n'
+        '  "warmup": [{"name":"...","description":"...","duration_min":5}, …],\n'
+        '  "main":   [ … ],\n'
+        '  "cooldown":[ … ]\n'
+        '}\n'
+        "Použij maximálně 70 % času každé části na cviky, zbytek je pauzy/instrukce."
+    )
 
-Dosud vedené lekce:
-{json.dumps(previous_lessons, ensure_ascii=False, indent=2)}
 
-Aktuální parametry:
-{json.dumps(current_params, ensure_ascii=False, indent=2)}
-
-Vygeneruj lekci ve formátu JSON:
-{{
-  "warmup": [{{"name":"...","description":"...","duration_min":5}}, …],
-  "main":   [ … ],
-  "cooldown":[ … ]
-}}
-Použij maximálně 70 % času každé části na cviky, zbytek je pauzy/instrukce.
-"""
-
+# --- Generování celé lekce přes Groq ---
 def generate_lesson_plan_groq(
     series_meta: Dict[str, Any],
     current_params: Dict[str, Any],
-    previous_lessons: List[Dict[str, Any]]
+    previous_lessons: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     prompt = build_lesson_prompt(series_meta, current_params, previous_lessons)
-    resp = get_groq_completion(prompt, model="tv-lesson-planner")
-    if not resp:
+    response_text = get_groq_completion(prompt, model="tv-lesson-planner")
+    if not response_text:
         return {}
-    # extrakce JSON objektu z textu
+
+    # extrahujeme JSON z textu
     try:
-        start = resp.find("{")
-        end   = resp.rfind("}") + 1
-        js    = resp[start:end]
-        return json.loads(js)
+        start = response_text.find("{")
+        end = response_text.rfind("}") + 1
+        json_str = response_text[start:end]
+        return json.loads(json_str)
     except Exception as e:
-        st.error(f"Chyba při parsování lekce z AI: {e}")
+        st.error(f"Chyba při parsování JSON z AI odpovědi: {e}")
         return {}
