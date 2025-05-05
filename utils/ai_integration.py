@@ -15,9 +15,10 @@ def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-8192"):
     if LlamaTokenizer is None or LlamaForCausalLM is None or torch is None:
         st.error("Nainstalujte prosím knihovny transformers a torch pomocí `pip install transformers torch`.")
         return None, None
-    tokenizer = LlamaTokenizer.from_pretrained(model_id)
+    tokenizer = LlamaTokenizer.from_pretrained(model_id, use_auth_token=True)
     model = LlamaForCausalLM.from_pretrained(
         model_id,
+        use_auth_token=True,
         torch_dtype=torch.float16,
         device_map="auto",
         max_seq_len=8192
