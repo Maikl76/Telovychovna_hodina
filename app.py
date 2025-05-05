@@ -291,6 +291,14 @@ Příloha: Soubory z data/
     
     # Tlačítko pro odeslání promptu do AI
     if st.button("Odeslat prompt do AI"):
+        from utils.ai_integration import get_groq_completion
+        with st.spinner("Probíhá generování plánu pomocí AI..."):
+            ai_response = get_groq_completion(prompt_edit)
+        if ai_response:
+            st.session_state["ai_generated_plan"] = ai_response
+            st.success("Plán byl vygenerován a uložen! Pokračujte na další stránku.")
+        else:
+            st.error("Nepodařilo se získat odpověď od AI.")
 def page_generate_plan():
     st.title("Vygenerování písemné přípravy a export")
     
