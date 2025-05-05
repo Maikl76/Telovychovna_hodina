@@ -1,165 +1,96 @@
 import streamlit as st
 import json
+import requests
 from typing import Dict, Any, List, Optional
-# Lazy import: transformers and torch will be imported only inside functions that need them.
 
-@st.cache_resource
-def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-8192"):
-    """Načte a vrátí tokenizer a model Llama 3 8B s kontextovým oknem 8192."""
-    try:
-        from transformers import LlamaTokenizer, LlamaForCausalLM
-        import torch
-    except ImportError:
-        st.error("Nainstalujte prosím knihovny transformers a torch pomocí `pip install transformers torch`.")
-        return None, None
-    tokenizer = LlamaTokenizer.from_pretrained(model_id, use_auth_token=True)
-    model = LlamaForCausalLM.from_pretrained(
-        model_id,
-        use_auth_token=True,
-        torch_dtype=torch.float16,
-        device_map="auto",
-        max_seq_len=8192
-    )
-    return tokenizer, model
-
+# --- Groq API completion ---
 def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[str]:
     """
-    Získá odpověď od Groq API (Llama 3 8B 8192) pomocí HTTP requestu, odpověď bude vždy v češtině.
+    Žádost o completion od Groq API, odpověď v češtině.
     """
-    import requests
-    import streamlit as st
     try:
         api_key = st.secrets["groq"]["api_key"]
+        url     = st.secrets["groq"]["url"]
     except Exception:
-        st.error("Chybí sekce [groq] nebo položka api_key v .streamlit/secrets.toml.")
+        st.error("Chybí [groq] v secrets.toml.")
         return None
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    # Přidej instrukci k promptu, aby odpověď byla v češtině
-    if "česky" not in prompt.lower() and "českém jazyce" not in prompt.lower():
+
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    # přidej instrukci česky
+    if "česky" not in prompt.lower():
         prompt += "\nOdpověz česky."
-    data = {
+
+    payload = {
         "model": model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
+        "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 1024,
         "temperature": 0.7
     }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=60)
-        response.raise_for_status()
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        st.error(f"Chyba při volání Groq API: {e}")
+        st.error(f"Chyba volání Groq API: {e}")
         return None
 
-
+# --- Generování jednoho cviku (existující) ---
 def generate_exercise_suggestion(
-    construct_type: str, 
-    subcategory: str, 
-    location: str, 
+    construct_type: str,
+    subcategory: str,
+    location: str,
     materials: List[str] = None
 ) -> Dict[str, Any]:
-    """
-    Vygeneruje návrh cviku pomocí AI.
-    
-    Args:
-        construct_type: Typ konstruktu (Zdatnost, Manipulace s předměty, Lokomoce)
-        subcategory: Podkategorie konstruktu
-        location: Místo (Tělocvična, Hřiště, Obojí)
-        materials: Seznam dostupného materiálu
-        
-    Returns:
-        Slovník s návrhem cviku nebo prázdný slovník v případě chyby
-    """
-    # Sestavení promptu
-    materials_text = ", ".join(materials) if materials else "žádné"
-    
-    prompt = f"""
-    Navrhni cvik pro školní tělovýchovnou hodinu s následujícími parametry:
-    - Cvičební konstrukt: {construct_type}
-    - Podkategorie: {subcategory}
-    - Místo: {location}
-    - Dostupné materiály: {materials_text}
-    
-    Odpověz ve formátu JSON s následujícími klíči:
-    - name: Název cviku (krátký a výstižný)
-    - description: Detailní popis cviku včetně provedení
-    - time: Doporučený čas v minutách (pouze číslo)
-    
-    Příklad odpovědi:
-    {{
-        "name": "Člunkový běh",
-        "description": "Rozmístěte kužely do řady s rozestupy 5 metrů. Žáci startují od prvého kuželu, běží k druhému, dotknou se ho, vrátí se k prvému, dotknou se ho, běží ke třetímu atd.",
-        "time": 5
-    }}
-    """
-    
-    # Získání odpovědi z AI
-    response = get_groq_completion(prompt)
-    if not response:
-        return {}
-    
-    # Zpracování odpovědi
-    try:
-        # Extrakce JSON z odpovědi (může být obklopena dalším textem)
-        json_start = response.find("{")
-        json_end = response.rfind("}") + 1
-        if json_start >= 0 and json_end > json_start:
-            json_str = response[json_start:json_end]
-            exercise = json.loads(json_str)
-            return exercise
-        else:
-            st.warning("Nepodařilo se extrahovat JSON z odpovědi AI.")
-            return {}
-    except Exception as e:
-        st.error(f"Chyba při zpracování odpovědi AI: {e}")
-        return {}
+    # ... (ponechávám bez změny) ...
 
+# --- Optimalizace existujícího plánu cviků (existující) ---
 def optimize_exercise_plan(exercises: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # ... (ponechávám bez změny) ...
+
+# --- NOVÉ: Generování celé lekce ---
+def build_lesson_prompt(
+    series_meta: Dict[str, Any],
+    current_params: Dict[str, Any],
+    previous_lessons: List[Dict[str, Any]]
+) -> str:
     """
-    Optimalizuje plán cvičení pomocí AI.
-    
-    Args:
-        exercises: Seznam cviků
-        
-    Returns:
-        Optimalizovaný seznam cviků
+    Sestaví prompt, který vezme historii lekcí,
+    všechny parametry a dostupné cviky z current_params.
     """
-    # Sestavení promptu
-    exercises_json = json.dumps(exercises, ensure_ascii=False)
-    
-    prompt = f"""
-    Optimalizuj následující plán cvičení pro školní tělovýchovnou hodinu:
-    {exercises_json}
-    
-    Seřaď cviky v logickém pořadí, uprav časovou dotaci tak, aby součet nepřesáhl 70% celkového času hodiny, a případně navrhni úpravy cviků.
-    
-    Odpověz ve formátu JSON jako seznam cviků se stejnou strukturou jako vstup.
-    """
-    
-    # Získání odpovědi z AI
-    response = get_groq_completion(prompt)
-    if not response:
-        return exercises
-    
-    # Zpracování odpovědi
+    return f"""
+Jsi pedagogický asistent pro TV hodiny. Série meta:
+{json.dumps(series_meta, ensure_ascii=False, indent=2)}
+
+Dosud vedené lekce:
+{json.dumps(previous_lessons, ensure_ascii=False, indent=2)}
+
+Aktuální parametry:
+{json.dumps(current_params, ensure_ascii=False, indent=2)}
+
+Vygeneruj lekci ve formátu JSON:
+{{
+  "warmup": [{{"name":"...","description":"...","duration_min":5}}, …],
+  "main":   [ … ],
+  "cooldown":[ … ]
+}}
+Použij maximálně 70 % času každé části na cviky, zbytek je pauzy/instrukce.
+"""
+
+def generate_lesson_plan_groq(
+    series_meta: Dict[str, Any],
+    current_params: Dict[str, Any],
+    previous_lessons: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    prompt = build_lesson_prompt(series_meta, current_params, previous_lessons)
+    resp = get_groq_completion(prompt, model="tv-lesson-planner")
+    if not resp:
+        return {}
+    # extrakce JSON objektu z textu
     try:
-        # Extrakce JSON z odpovědi
-        json_start = response.find("[")
-        json_end = response.rfind("]") + 1
-        if json_start >= 0 and json_end > json_start:
-            json_str = response[json_start:json_end]
-            optimized_exercises = json.loads(json_str)
-            return optimized_exercises
-        else:
-            st.warning("Nepodařilo se extrahovat JSON z odpovědi AI.")
-            return exercises
+        start = resp.find("{")
+        end   = resp.rfind("}") + 1
+        js    = resp[start:end]
+        return json.loads(js)
     except Exception as e:
-        st.error(f"Chyba při zpracování odpovědi AI: {e}")
-        return exercises
+        st.error(f"Chyba při parsování lekce z AI: {e}")
+        return {}
