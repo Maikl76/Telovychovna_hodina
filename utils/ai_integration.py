@@ -35,7 +35,7 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
     except Exception:
         st.error("Chybí sekce [groq] nebo položka api_key v .streamlit/secrets.toml.")
         return None
-    url = "https://api.groq.com/openai/v1/chat/completions"
+    url = "https://api.groq.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -96,7 +96,7 @@ def generate_exercise_suggestion(
     Příklad odpovědi:
     {{
         "name": "Člunkový běh",
-        "description": "Rozmístěte kužely do řady s rozestupy 5 metrů. Žáci startují od prvního kuželu, běží k druhému, dotknou se ho, vrátí se k prvnímu, dotknou se ho, běží ke třetímu atd.",
+        "description": "Rozmístěte kužely do řady s rozestupy 5 metrů. Žáci startují od prvého kuželu, běží k druhému, dotknou se ho, vrátí se k prvému, dotknou se ho, běží ke třetímu atd.",
         "time": 5
     }}
     """
