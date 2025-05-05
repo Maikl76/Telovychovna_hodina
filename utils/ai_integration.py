@@ -24,41 +24,24 @@ def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-8192"):
     )
     return tokenizer, model
 
-def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[str]:
+def get_groq_completion(prompt: str, model_id: str = "meta-llama/Llama-3-8b-8192") -> Optional[str]:
     """
-    Získá odpověď od Groq API (Llama 3 8B 8192) pomocí HTTP requestu, odpověď bude vždy v češtině.
+    Získá odpověď z lokálního Llama modelu `meta-llama/Llama-3-8b-8192`, vždy v češtině.
     """
-    import requests
-    import streamlit as st
-    try:
-        api_key = st.secrets["groq"]["api_key"]
-    except Exception:
-        st.error("Chybí sekce [groq] nebo položka api_key v .streamlit/secrets.toml.")
+    if LlamaTokenizer is None or LlamaForCausalLM is None or torch is None:
+        st.error("Nainstalujte prosím knihovny transformers a torch pomocí `pip install transformers torch`.")
         return None
-    url = "https://api.groq.com/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    tokenizer, llm_model = load_llama_model(model_id=model_id)
+    if not tokenizer or not llm_model:
+        return None
     # Přidej instrukci k promptu, aby odpověď byla v češtině
     if "česky" not in prompt.lower() and "českém jazyce" not in prompt.lower():
         prompt += "\nOdpověz česky."
-    data = {
-        "model": model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 1024,
-        "temperature": 0.7
-    }
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=60)
-        response.raise_for_status()
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        st.error(f"Chyba při volání Groq API: {e}")
-        return None
+    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs = {k: v.to(llm_model.device) for k, v in inputs.items()}
+    with torch.no_grad():
+        outputs = llm_model.generate(**inputs, max_new_tokens=512, temperature=0.7)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 def generate_exercise_suggestion(
     construct_type: str, 
