@@ -36,7 +36,7 @@ def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[
     except Exception:
         st.error("Chybí sekce [groq] nebo položka api_key v .streamlit/secrets.toml.")
         return None
-    url = "https://api.groq.com/v1/chat/completions"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
