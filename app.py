@@ -232,6 +232,32 @@ def page_generate_prompt():
   * Zaměřit se na základní pohybové dovednosti a jejich kombinace
   * Cvičení by měla být přizpůsobena menší frekvenci a zaměřena na efektivitu"""
     
+    # Načtení souborů z data/
+    files = []
+    for file in os.listdir("data"):
+        if file.endswith(".csv") or file.endswith(".xlsx") or file.endswith(".txt"):
+            files.append(file)
+    
+    # Přehled souborů
+    st.write("Soubory v data/:")
+    for file in files:
+        st.write(file)
+    
+    # Načtení obsahu souborů
+    file_contents = {}
+    for file in files:
+        file_path = os.path.join("data", file)
+        if file.endswith(".csv"):
+            df = pd.read_csv(file_path)
+            file_contents[file] = df.to_string()
+        elif file.endswith(".xlsx"):
+            df = pd.read_excel(file_path)
+            file_contents[file] = df.to_string()
+        elif file.endswith(".txt"):
+            with open(file_path, "r") as f:
+                file_contents[file] = f.read()
+    
+    # Vytvoření promptu
     prompt = f"""Navrhni školní tělovýchovnou hodinu pro {st.session_state.class_grade} základní školy, trvající 45 minut, rozdělenou na:
 1. Přípravnou část (vede {st.session_state.preparatory_leader}) – zaměřenou na zahřívací, mobilizační a koordinační cviky. Použij databázi cviků pro přípravnou část.
 2. Hlavní část (vede {st.session_state.main_leader}) – obsahující cvičení podporující: {selected_categories}.
@@ -254,15 +280,17 @@ Důležité pokyny:
 1. Navrhni cvičení tak, aby zabrala MAXIMÁLNĚ 70% celkového času každé části. Zbytek času je vyhrazen na přestávky mezi cvičeními, přesun mezi stanovišti, instrukce, atd.
 2. U každého cvičení uveď jeho název, popis a časovou dotaci v minutách.
 3. Vedle detailního návrhu jednotlivých částí vytvoř také sekci "Stručný obsah", která shrnuje, jaké cviky a metody byly použity.
-"""
-    st.text_area("Vygenerovaný prompt:", prompt, height=500)
-    
-    b64 = base64.b64encode(prompt.encode()).decode()
-    href = f'<a href="data:file/txt;base64,{b64}" download="prompt.txt">Stáhnout prompt</a>'
-    st.markdown(href, unsafe_allow_html=True)
-    st.write("Zkopírujte prompt do vašeho custom GPT modelu a vygenerujte návrh hodiny. Poté zkopírujte výstup do stránky 'Vygenerování písemné přípravy a export'.")
 
-# Stránka Vygenerování písemné přípravy a export (PDF) s rozšířenými poli
+Příloha: Soubory z data/
+"""
+    for file, content in file_contents.items():
+        prompt += f"\n--- {file} ---\n{content}\n"
+    
+    # Editovatelný prompt
+    prompt_edit = st.text_area("Vygenerovaný prompt:", prompt, height=500)
+    
+    # Tlačítko pro odeslání promptu do AI
+    if st.button("Odeslat prompt do AI"):
 def page_generate_plan():
     st.title("Vygenerování písemné přípravy a export")
     
@@ -878,11 +906,6 @@ def admin_login():
             st.session_state.admin_logged_in = True
             st.success("Přihlášení úspěšné!")
             st.rerun()
-        else:
-            st.error("Nesprávné heslo!")
-    return st.session_state.get("admin_logged_in", False)
-
-# Administrátorské stránky – Správa podkladů
 def page_admin_resources():
     if st.session_state.get("resource_deleted") or st.session_state.get("resource_added"):
         st.session_state.pop("resource_deleted", None)
@@ -934,40 +957,9 @@ def page_admin_resources():
                             else:
                                 st.error("Nepodařilo se smazat podklad.")
 
-def page_admin_exercises():
-    st.title("Správa cviků")
-    
-    try:
-        from utils.database import get_exercises, delete_exercise, get_exercise_categories
-    except ImportError:
-        st.error("Nepodařilo se načíst modul database.py. Zkontrolujte, zda je soubor správně umístěn v adresáři utils.")
-        return
-    
-    # Získání cviků z databáze
-    exercises = get_exercises()
-    
-    if not exercises:
-        st.info("Zatím nejsou žádné cviky v databázi.")
-    else:
-        st.write(f"Počet cviků v databázi: {len(exercises)}")
-        
-        for ex in exercises:
-            with st.expander(f"{ex['name']} ({ex['location']})"):
-                st.write(f"**Popis:** {ex['description']}")
-                st.write(f"**Materiál:** {', '.join(ex['materials'])}")
-                
-                # Získání kategorií cviku
-                categories = get_exercise_categories(ex['id'])
-                if categories:
-                    st.write("**Kategorie:**")
-                    for cat in categories:
-                        st.write(f"- {cat['construct_type']}: {cat['subcategory']}")
-                
-                if st.button(f"Smazat cvik #{ex['id']}", key=f"delete_{ex['id']}"):
-                    if delete_exercise(ex['id']):
-                        st.success("Cvik byl smazán.")
-                        st.rerun()
-                    else:
+    # Nová sekce pro správu podkladových souborů
+    st.subheader("Správa podkladových souborů")
+    st.write("Nahrávání, výpis a smazání podkladových souborů (Excel, CSV, TXT) do složky data/")
                         st.error("Nepodařilo se smazat cvik.")
 
 def page_admin_ai_exercise():
