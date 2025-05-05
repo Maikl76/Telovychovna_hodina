@@ -10,8 +10,8 @@ except ImportError:
     torch = None
 
 @st.cache_resource
-def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-instant-128k"):
-    """Načte a vrátí tokenizer a model Llama 3.1 8B Instant 128k."""
+def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-8192"):
+    """Načte a vrátí tokenizer a model Llama 3 8B s kontextovým oknem 8192."""
     if LlamaTokenizer is None or LlamaForCausalLM is None or torch is None:
         st.error("Nainstalujte prosím knihovny transformers a torch pomocí `pip install transformers torch`.")
         return None, None
@@ -20,13 +20,13 @@ def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-instant-128k"):
         model_id,
         torch_dtype=torch.float16,
         device_map="auto",
-        max_seq_len=131072
+        max_seq_len=8192
     )
     return tokenizer, model
 
-def get_groq_completion(prompt: str, model: str = "llama-3-8b-instant") -> Optional[str]:
+def get_groq_completion(prompt: str, model: str = "llama3-8b-8192") -> Optional[str]:
     """
-    Získá odpověď od Groq API (Llama 3.1 8B Instant) pomocí HTTP requestu, odpověď bude vždy v češtině.
+    Získá odpověď od Groq API (Llama 3 8B 8192) pomocí HTTP requestu, odpověď bude vždy v češtině.
     """
     import requests
     import streamlit as st
