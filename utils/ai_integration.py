@@ -1,18 +1,15 @@
 import streamlit as st
 import json
 from typing import Dict, Any, List, Optional
-try:
-    from transformers import LlamaTokenizer, LlamaForCausalLM
-    import torch
-except ImportError:
-    LlamaTokenizer = None
-    LlamaForCausalLM = None
-    torch = None
+# Lazy import: transformers and torch will be imported only inside functions that need them.
 
 @st.cache_resource
 def load_llama_model(model_id: str = "meta-llama/Llama-3-8b-8192"):
     """Načte a vrátí tokenizer a model Llama 3 8B s kontextovým oknem 8192."""
-    if LlamaTokenizer is None or LlamaForCausalLM is None or torch is None:
+    try:
+        from transformers import LlamaTokenizer, LlamaForCausalLM
+        import torch
+    except ImportError:
         st.error("Nainstalujte prosím knihovny transformers a torch pomocí `pip install transformers torch`.")
         return None, None
     tokenizer = LlamaTokenizer.from_pretrained(model_id, use_auth_token=True)
