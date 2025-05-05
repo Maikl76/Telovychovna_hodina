@@ -968,7 +968,6 @@ def page_admin_resources():
     # Nová sekce pro správu podkladových souborů
     st.subheader("Správa podkladových souborů")
     st.write("Nahrávání, výpis a smazání podkladových souborů (Excel, CSV, TXT) do složky data/")
-                        st.error("Nepodařilo se smazat cvik.")
 
 def page_admin_ai_exercise():
     st.title("Vytvoření cviku s pomocí AI")
