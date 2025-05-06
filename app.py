@@ -1,8 +1,8 @@
 import os
 import sys
 
-# Přidáme složku utils do cesty pro import modulů
-sys.path.append(os.path.join(os.path.dirname(__file__), "utils"))
+# Umožníme import modulů z podsložky utils
+sys.path.append(os.path.dirname(__file__))
 
 import streamlit as st
 import pandas as pd
@@ -13,12 +13,8 @@ import base64
 import io
 from datetime import datetime
 
-# Nyní importujeme database a AI moduly
-import database as db
-import ai_integration as ai
-
-# Načteme Llama model cache
-tokenizer, llama_model = ai.load_llama_model()
+# Import databázových funkcí
+import utils.database as db
 
 # 🍀 Utility pro vyčištění session state
 def clear_plan_data():
@@ -32,7 +28,6 @@ def clear_plan_data():
         st.session_state.pop(k, None)
 
 # 1) Úvod
-
 def page_intro():
     st.title("Úvod")
     st.write("Tato aplikace pomáhá vytvářet přípravu na tělovýchovnou hodinu.")
@@ -40,7 +35,6 @@ def page_intro():
     st.write(f"Vybraná třída: {st.session_state.class_grade}")
 
 # 2) Výběr škol a kategorií
-
 def page_school_selection():
     st.title("Výběr škol a kategorií")
     schools = [r["value"] for r in db.get_resources("Misto")]
@@ -57,7 +51,6 @@ def page_school_selection():
         st.session_state.school_category[school] = cat
 
 # 3) Výběr prostředí a vybavení
-
 def page_environment_equipment():
     st.title("Výběr prostředí a vybavení")
     st.selectbox("Kde se hodina koná?", ["Tělocvična", "Hřiště"], key="environment")
@@ -65,7 +58,6 @@ def page_environment_equipment():
     st.multiselect("Vybavení:", equip_opts, key="equipment")
 
 # 4) Nastavení rolí
-
 def page_roles():
     st.title("Nastavení rolí")
     st.session_state.prep_leader = "Trenér"
@@ -73,15 +65,13 @@ def page_roles():
     st.radio("Závěrečná část vede:", ["Učitel","Trenér","Oba"], key="final_leader")
 
 # 5) Výběr cvičebních konstruktů
-
 def page_exercise_constructs():
     st.title("Výběr cvičebních konstruktů")
-    st.multiselect("Zdatnost:", db.get_resources("Zdatnost"), key="fitness")
-    st.multiselect("Manipulace s předměty:", db.get_resources("Manipulace s predmety"), key="manipulation")
-    st.multiselect("Lokomoce:", db.get_resources("Lokomoce"), key="locomotion")
+    st.multiselect("Zdatnost:", [r["value"] for r in db.get_resources("Zdatnost")], key="fitness")
+    st.multiselect("Manipulace s předměty:", [r["value"] for r in db.get_resources("Manipulace s predmety")], key="manipulation")
+    st.multiselect("Lokomoce:", [r["value"] for r in db.get_resources("Lokomoce")], key="locomotion")
 
-# 6) Správa cviků (admin)
-
+# 6) Administrace: správa cviků
 def page_admin_exercises():
     st.title("Administrace: Správa cviků")
     exercises = db.get_exercises()
@@ -112,7 +102,6 @@ def page_admin_exercises():
         st.experimental_rerun()
 
 # 7) Výběr cviků pro hodinu
-
 def page_select_exercises():
     st.title("Výběr cviků pro hodinu")
     if "environment" not in st.session_state:
@@ -130,15 +119,14 @@ def page_select_exercises():
         sel = st.multiselect(f"Vyber cviky ({label}):", opts, key=f"{key}_sel2")
         st.session_state[f"selected_exercises_{key}"] = [candidates[opts.index(s)]["id"] for s in sel]
 
-# 8) Časové rozdělení
-
+# 8) Časové rozdělení hodiny
 def page_time_allocation():
     st.title("Časové rozdělení hodiny")
-    st.session_state.prep_time = st.number_input("Přípravná část (min):",1,45,10,key="prep_time")
-    st.session_state.main_time = st.number_input("Hlavní část (min):",1,45,25,key="main_time")
-    st.session_state.final_time = st.number_input("Závěrečná část (min):",1,45,10,key="final_time")
+    st.number_input("Přípravná část (min):", 1,45,10, key="prep_time")
+    st.number_input("Hlavní část (min):", 1,45,25, key="main_time")
+    st.number_input("Závěrečná část (min):", 1,45,10, key="final_time")
 
-# 9) Generování finální přípravy
+# 9) Generování finální přípravy a export
 def page_generate_plan():
     st.title("Písemná příprava")
     for part in ["prep","main","final"]:
@@ -149,15 +137,15 @@ def page_generate_plan():
     lines.append(f"{st.session_state.class_grade} — Písemná příprava {datetime.today().date()}")
     lines.append("")
     for part,label in [("prep","Přípravná část"),("main","Hlavní část"),("final","Závěrečná část")]:
-        minutes = st.session_state[f"{part}_time"]
+        minutes = st.session_state.get(f"{part}_time", 0)
         lines.append(f"--- {label} ({minutes} min) ---")
         for ex in db.get_exercises():
-            if ex["id"] in st.session_state[f"selected_exercises_{part}"]:
+            if ex["id"] in st.session_state.get(f"selected_exercises_{part}", []):
                 lines.append(f"- {ex['name']}: {ex['description']}")
         lines.append("")
     plan = "\n".join(lines)
     st.text_area("Výsledná příprava", plan, height=400)
-    if st.button("Export PDF"):
+    if st.button("Exportovat PDF"):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
@@ -167,12 +155,12 @@ def page_generate_plan():
         st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="plan.pdf">Stáhnout PDF</a>', unsafe_allow_html=True)
 
 # 10) Uložené přípravy
-
 def page_saved_plans():
     st.title("Uložené přípravy")
     os.makedirs("output", exist_ok=True)
     for fname in sorted(os.listdir("output")):
-        with open(os.path.join("output", fname),"r",encoding="utf-8") as f:
+        path = os.path.join("output", fname)
+        with open(path,"r",encoding="utf-8") as f:
             content = f.read()
         st.subheader(fname)
         st.text_area(fname, content, height=200)
@@ -180,45 +168,48 @@ def page_saved_plans():
             st.session_state["loaded_plan"] = content
 
 # 11) Administrace podkladů
-
 def page_admin_resources():
     st.title("Administrace: Podklady")
-    for label,key in [("Vybavení","Vybaveni"),("Zdatnost","Zdatnost"),("Manipulace","Manipulace s predmety"),("Lokomoce","Lokomoce"),("Kategorie školy","Kategorie školy"),("Místo","Misto")]:
+    resources = [
+        ("Vybavení","Vybaveni"),("Zdatnost","Zdatnost"),
+        ("Manipulace","Manipulace s predmety"),("Lokomoce","Lokomoce"),
+        ("Kategorie školy","Kategorie školy"),("Místo","Misto")
+    ]
+    for label,key in resources:
         st.subheader(label)
-        with st.form(f"res_{key}"):
+        with st.form(f"form_{key}"):
             val = st.text_input("Nový podklad", key=f"val_{key}")
             if st.form_submit_button("Přidat"):
-                db.add_resource(key,val)
+                db.add_resource(key, val)
                 st.experimental_rerun()
         for r in db.get_resources(key):
-            if st.button(f"Smazat {r['value']}", key=f"delres_{r['id']}"):
+            if st.button(f"Smazat {r['value']}", key=f"del_{key}_{r['id']}"):
                 db.delete_resource(r['id'])
                 st.experimental_rerun()
 
 # Hlavní funkce
-
 def main():
     st.sidebar.title("Tělovýchovná jednotka")
     mode = st.sidebar.selectbox("Režim:",["Vytvoření hodiny","Administrace"])
-    if mode=="Vytvoření hodiny":
-        pages={
-            "Úvod":page_intro,
-            "Školy":page_school_selection,
-            "Prostředí/vybavení":page_environment_equipment,
-            "Role":page_roles,
-            "Konstrukt":page_exercise_constructs,
-            "Výběr cviků":page_select_exercises,
-            "Čas":page_time_allocation,
-            "Výstup":page_generate_plan,
-            "Uložené":page_saved_plans
+    if mode == "Vytvoření hodiny":
+        pages = {
+            "Úvod": page_intro,
+            "Školy": page_school_selection,
+            "Prostředí/vybavení": page_environment_equipment,
+            "Role": page_roles,
+            "Konstrukt": page_exercise_constructs,
+            "Výběr cviků": page_select_exercises,
+            "Čas": page_time_allocation,
+            "Výstup": page_generate_plan,
+            "Uložené": page_saved_plans
         }
     else:
-        pages={
-            "Správa cviků":page_admin_exercises,
-            "Podklady":page_admin_resources
+        pages = {
+            "Správa cviků": page_admin_exercises,
+            "Podklady": page_admin_resources
         }
-    choice=st.sidebar.radio("Stránky:",list(pages.keys()))
+    choice = st.sidebar.radio("Stránky:", list(pages.keys()))
     pages[choice]()
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
