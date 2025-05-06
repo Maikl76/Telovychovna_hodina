@@ -16,6 +16,7 @@ from utils.database import (
     add_lesson_plan
 )
 from utils.ai_integration import generate_lesson_plan_groq
+from postgrest import APIError
 
 st.set_page_config(page_title="TV Lekce", layout="wide")
 
@@ -32,7 +33,11 @@ if mode == "Vytvoření lekce":
         st.stop()
 
     # 1) Výběr nebo vytvoření série
-    series = get_series_for_teacher(teacher_id)
+    try:
+        series = get_series_for_teacher(teacher_id)
+    except APIError as e:
+        st.error(f"Chyba při načítání sérií z databáze: {e}")
+        series = []
     opts = {f"{s['class_name']} ({s['school_year']})": s for s in series}
     choice = st.selectbox("Vyber existující sérii nebo Nová série", list(opts.keys()) + ["Nová série"])
     if choice == "Nová série":
@@ -42,15 +47,22 @@ if mode == "Vytvoření lekce":
             subject     = st.text_input("Předmět", "TV")
             school_year = st.text_input("Školní rok", "2024/2025")
             if st.form_submit_button("Vytvořit"):
-                meta = create_series(teacher_id, school_id, class_name, subject, school_year)
-                st.success("Nová série vytvořena.")
-                st.experimental_rerun()
+                try:
+                    meta = create_series(teacher_id, school_id, class_name, subject, school_year)
+                    st.success("Nová série vytvořena.")
+                    st.experimental_rerun()
+                except APIError as e:
+                    st.error(f"Chyba při vytváření série: {e}")
     else:
         meta      = opts[choice]
         series_id = meta["id"]
 
     # 2) Zobrazení posledních lekcí
-    prev = get_last_lessons(series_id, limit=3)
+    try:
+        prev = get_last_lessons(series_id, limit=3)
+    except APIError as e:
+        st.error(f"Chyba při načítání historie lekcí: {e}")
+        prev = []
     if prev:
         st.subheader("Poslední lekce v sérii:")
         for lesson in prev:
@@ -63,10 +75,10 @@ if mode == "Vytvoření lekce":
         equipment   = st.multiselect("Vybavení", get_resources("Vybavení"))
         goal        = st.text_input("Cíl lekce")
 
-        # Načtení cviků z DB (lze přidat filtry podle potřeby)
-        prep = get_exercises(construct_type=None, subcategory=None)
-        main = get_exercises(construct_type=None, subcategory=None)
-        cool = get_exercises(construct_type=None, subcategory=None)
+        # Načtení cviků z DB
+        prep = get_exercises()
+        main = get_exercises()
+        cool = get_exercises()
 
         generate_btn = st.form_submit_button("Generovat lekci")
         if generate_btn:
@@ -86,30 +98,40 @@ if mode == "Vytvoření lekce":
         plan, params, lec_date = st.session_state["new_plan"]
         st.subheader("Vygenerovaná lekce")
         st.json(plan)
-
         if st.button("Uložit lekci do DB"):
-            idx = get_next_sequence_index(series_id)
-            success = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
-            if success:
-                st.success(f"Lekce uložena jako číslo {idx}.")
-            else:
-                st.error("Ukládání lekce selhalo.")
+            try:
+                idx = get_next_sequence_index(series_id)
+                success = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
+                if success:
+                    st.success(f"Lekce uložena jako číslo {idx}.")
+                else:
+                    st.error("Ukládání lekce selhalo.")
+            except APIError as e:
+                st.error(f"Chyba při ukládání lekce: {e}")
 
 elif mode == "Uložené lekce":
     st.title("Uložené lekce")
-
     teacher_id = st.session_state.get("user_id", None)
     if not teacher_id:
         st.error("Nejste přihlášen(a) jako učitel. Prosím přihlašte se.")
         st.stop()
 
-    series = get_series_for_teacher(teacher_id)
+    try:
+        series = get_series_for_teacher(teacher_id)
+    except APIError as e:
+        st.error(f"Chyba při načítání sérií: {e}")
+        series = []
+
     if not series:
         st.info("Nemáte žádné uložené série lekcí.")
     else:
         sel = st.selectbox("Vyber sérii", [f"{s['class_name']} ({s['school_year']})" for s in series])
         meta = next(s for s in series if f"{s['class_name']} ({s['school_year']})" == sel)
-        lessons = get_last_lessons(meta["id"], limit=100)
+        try:
+            lessons = get_last_lessons(meta["id"], limit=100)
+        except APIError as e:
+            st.error(f"Chyba při načítání lekcí: {e}")
+            lessons = []
 
         if not lessons:
             st.info("Pro tuto sérii nejsou žádné lekce.")
@@ -121,7 +143,7 @@ elif mode == "Uložené lekce":
 else:  # Administrator
     st.title("Administrace")
 
-    # 5a) Správa zdrojů (resources)
+    # Správa zdrojů (resources)
     st.subheader("Správa zdrojů")
     resource_types = [
         "Vybavení", "Místo", "Cíl", "Bezpečnost",
@@ -135,20 +157,35 @@ else:  # Administrator
             with st.form(f"add_{rtype}"):
                 val = st.text_input("Nová položka")
                 if st.form_submit_button("Přidat"):
-                    if add_resource(rtype, val):
+                    try:
+                        add_resource(rtype, val)
                         st.success("Přidáno.")
                         st.experimental_rerun()
-            items = get_resources(rtype)
+                    except APIError as e:
+                        st.error(f"Chyba při přidávání zdroje: {e}")
+            try:
+                items = get_resources(rtype)
+            except APIError as e:
+                st.error(f"Chyba při načítání zdrojů: {e}")
+                items = []
             for itm in items:
                 cols = st.columns((6, 1))
                 cols[0].write(itm["value"])
                 if cols[1].button("🗑", key=f"del_{rtype}_{itm['id']}"):
-                    delete_resource(itm["id"])
-                    st.experimental_rerun()
+                    try:
+                        delete_resource(itm["id"])
+                        st.experimental_rerun()
+                    except APIError as e:
+                        st.error(f"Chyba při mazání zdroje: {e}")
 
-    # 5b) Správa cviků
+    # Správa cviků
     st.subheader("Správa cviků")
-    exercises = get_exercises()
+    try:
+        exercises = get_exercises()
+    except APIError as e:
+        st.error(f"Chyba při načítání cviků: {e}")
+        exercises = []
+
     if not exercises:
         st.info("Žádné cviky k dispozici.")
     else:
@@ -163,5 +200,8 @@ else:  # Administrator
                     for c in cats:
                         st.write(f"- {c['construct_type']}: {c['subcategory']}")
                 if st.button("Smazat cvik", key=f"del_ex_{ex['id']}"):
-                    delete_exercise(ex["id"])
-                    st.experimental_rerun()
+                    try:
+                        delete_exercise(ex["id"])
+                        st.experimental_rerun()
+                    except APIError as e:
+                        st.error(f"Chyba při mazání cviku: {e}")
