@@ -18,19 +18,6 @@ from utils.database import (
 )
 from utils.ai_integration import generate_lesson_plan_groq
 
-st.set_page_config(page_title="TV Lekce", layout="wide")
-
-def main():
-    # --- Volba režimu ---
-    mode = st.sidebar.selectbox("Režim", ["Vytvoření lekce", "Uložené lekce", "Administrator"])
-
-    if mode == "Vytvoření lekce":
-        render_create_lesson()
-    elif mode == "Uložené lekce":
-        render_saved_lessons()
-    else:
-        render_admin()
-
 def render_create_lesson():
     st.title("Generátor tělovýchovné lekce")
 
@@ -40,7 +27,7 @@ def render_create_lesson():
         st.error("Nejste přihlášen(a) jako učitel. Prosím přihlašte se.")
         return
 
-    # 2) Výběr nebo vytvoření série
+    # 2) Výběr existující série nebo tvorba nové
     try:
         series = get_series_for_teacher(teacher_id)
     except APIError as e:
@@ -66,9 +53,8 @@ def render_create_lesson():
                 except APIError as e:
                     st.error(f"Chyba při vytváření série: {e}")
         return
-    else:
-        meta = opts[choice]
-        series_id = meta["id"]
+    meta = opts[choice]
+    series_id = meta["id"]
 
     # 3) Zobrazení posledních lekcí
     try:
@@ -109,15 +95,14 @@ def render_create_lesson():
         plan, params, lec_date = st.session_state["new_plan"]
         st.subheader("Vygenerovaná lekce")
         st.json(plan)
-
         if st.button("Uložit lekci do DB"):
             try:
                 idx = get_next_sequence_index(series_id)
-                ok = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
+                ok  = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
                 if ok:
                     st.success(f"Lekce uložena jako číslo {idx}.")
                 else:
-                    st.error("Ukládání lekce selhalo.")
+                    st.error("Ukládání selhalo.")
             except APIError as e:
                 st.error(f"Chyba při ukládání lekce: {e}")
 
@@ -156,7 +141,6 @@ def render_saved_lessons():
 
 def render_admin():
     st.title("Administrace")
-
     st.subheader("Správa zdrojů")
     resource_types = [
         "Vybavení", "Místo", "Cíl", "Bezpečnost",
@@ -182,7 +166,7 @@ def render_admin():
                 st.error(f"Chyba při načítání zdrojů: {e}")
                 items = []
             for itm in items:
-                cols = st.columns((6, 1))
+                cols = st.columns((6,1))
                 cols[0].write(itm["value"])
                 if cols[1].button("🗑", key=f"del_{rtype}_{itm['id']}"):
                     try:
@@ -204,8 +188,8 @@ def render_admin():
         for ex in exercises:
             with st.expander(ex["name"]):
                 st.write(ex["description"])
-                st.write("Lokalita:", ex.get("location", ""))
-                st.write("Materiál:", ", ".join(ex.get("materials", [])))
+                st.write("Lokalita:", ex.get("location",""))
+                st.write("Materiál:", ", ".join(ex.get("materials",[])))
                 cats = get_exercise_categories(ex["id"])
                 if cats:
                     st.write("Kategorie:")
@@ -218,5 +202,15 @@ def render_admin():
                     except APIError as e:
                         st.error(f"Chyba při mazání cviku: {e}")
 
+def app():
+    st.set_page_config(page_title="TV Lekce", layout="wide")
+    mode = st.sidebar.selectbox("Režim", ["Vytvoření lekce", "Uložené lekce", "Administrator"])
+    if mode == "Vytvoření lekce":
+        render_create_lesson()
+    elif mode == "Uložené lekce":
+        render_saved_lessons()
+    else:
+        render_admin()
+
 if __name__ == "__main__":
-    main()
+    app()
