@@ -177,6 +177,33 @@ def page_saved_plans():
         st.text_area(fname, content, height=200)
 
 
+def page_admin_exercises():
+    st.title("Administrace: Správa cviků")
+    exercises = db.get_exercises()
+    for ex in exercises:
+        with st.expander(ex["name"]):
+            st.write(ex["description"])
+            st.write("Sekce:", ", ".join(db.get_exercise_sections(ex["id"])))
+            if st.button("Smazat cvik", key=f"del_{ex['id']}"):
+                db.delete_exercise(ex["id"])
+    st.write("---")
+    st.subheader("Přidat / upravit cvik")
+    ex_id = st.text_input("ID (prázdné=nový)", key="ex_id")
+    name = st.text_input("Název", key="ex_name")
+    desc = st.text_area("Popis", key="ex_desc")
+    loc = st.selectbox("Místo", ["Tělocvična","Hřiště","Obojí"], key="ex_loc")
+    mats = st.text_input("Materiály (čárka)", key="ex_mats")
+    ct = st.selectbox("Konstrukt", db.get_construct_types(), key="ex_ct")
+    sub = st.selectbox("Podkategorie", db.get_subcategories(ct), key="ex_sub")
+    secs = st.multiselect("Sekce hodiny", ["prep","main","final"], key="ex_secs")
+    if st.button("Uložit cvik"):
+        mats_list = [m.strip() for m in mats.split(",") if m.strip()]
+        ct_payload = [{"construct_type": ct, "subcategory": sub}]
+        if ex_id:
+            db.update_exercise(ex_id, name, desc, loc, mats_list, ct_payload, secs)
+        else:
+            db.add_exercise(name, desc, loc, mats_list, ct_payload, secs)
+
 def page_admin_resources():
     st.title("Administrace: Podklady")
     for label, key in [
