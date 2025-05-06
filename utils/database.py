@@ -6,32 +6,34 @@ from typing import List, Dict, Any, Optional
 from supabase import create_client, Client
 
 # Inicializace Supabase klienta
-def _get_supabase_client() -> Client:
-    """Získá Supabase klienta z Streamlit secrets."""
+def _get_supabase_client() -> Optional[Client]:
     try:
-        supabase_url = st.secrets["supabase"]["url"]
-        supabase_key = st.secrets["supabase"]["key"]
-        return create_client(supabase_url, supabase_key)
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        return create_client(url, key)
     except Exception as e:
         st.error(f"Chyba při inicializaci Supabase klienta: {e}")
-        # Fallback na lokální JSON soubor, pokud není Supabase dostupné
         return None
 
-# Fallback na lokální JSON soubor, pokud není Supabase dostupné
+# Fallback na lokální JSON soubor, pokud Supabase není dostupné
 DB_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "exercises.json")
 os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
 
 def _load_db() -> Dict[str, Any]:
     """Načte databázi z JSON souboru (fallback)."""
     if not os.path.exists(DB_FILE):
-        return {"exercises": [], "categories": []}
-    
+        return {"exercises": [], "categories": [], "sections": []}
     try:
         with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        # Zajistí, že klíče existují
+        data.setdefault("exercises", [])
+        data.setdefault("categories", [])
+        data.setdefault("sections", [])
+        return data
     except Exception as e:
-        st.error(f"Chyba při načítání databáze: {e}")
-        return {"exercises": [], "categories": []}
+        st.error(f"Chyba při načítání lokální databáze: {e}")
+        return {"exercises": [], "categories": [], "sections": []}
 
 def _save_db(data: Dict[str, Any]) -> bool:
     """Uloží databázi do JSON souboru (fallback)."""
@@ -40,242 +42,172 @@ def _save_db(data: Dict[str, Any]) -> bool:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
-        st.error(f"Chyba při ukládání databáze: {e}")
+        st.error(f"Chyba při ukládání lokální databáze: {e}")
         return False
 
-def get_exercises(construct_type: Optional[str] = None, subcategory: Optional[str] = None) -> List[Dict[str, Any]]:
+# CRUD cviků + sekcí
+
+def get_exercises(
+    construct_type: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    section: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
-    Získá cviky z databáze, volitelně filtrované podle konstruktu a podkategorie.
-    
-    Args:
-        construct_type: Typ konstruktu (Zdatnost, Manipulace s předměty, Lokomoce)
-        subcategory: Podkategorie konstruktu
-        
-    Returns:
-        Seznam cviků odpovídajících kritériím
+    Získá cviky z databáze, volitelně filtrované podle:
+    - construct_type
+    - subcategory
+    - section ('prep', 'main', 'final')
     """
     supabase = _get_supabase_client()
-    
     if supabase:
-        try:
-            # Použití Supabase
-            if not construct_type and not subcategory:
-                # Získání všech cviků
-                response = supabase.table("exercises").select("*").execute()
-                return response.data
-            else:
-                # Získání cviků podle kategorií
-                query = supabase.table("exercise_categories").select(
-                    "exercise_id"
-                )
-                
-                if construct_type:
-                    query = query.eq("construct_type", construct_type)
-                
-                if subcategory:
-                    query = query.eq("subcategory", subcategory)
-                
-                response = query.execute()
-                exercise_ids = [item["exercise_id"] for item in response.data]
-                
-                if not exercise_ids:
-                    return []
-                
-                # Získání cviků podle ID
-                response = supabase.table("exercises").select("*").in_("id", exercise_ids).execute()
-                return response.data
-        except Exception as e:
-            st.error(f"Chyba při komunikaci se Supabase: {e}")
-            # Fallback na lokální databázi
-    
-    # Fallback na lokální JSON soubor
+        # Nejprve sestavíme base query
+        query = supabase.table("exercises").select("*")
+        if construct_type:
+            query = query.eq("construct_type", construct_type)
+        if subcategory:
+            query = query.eq("subcategory", subcategory)
+        # Filtrovat podle sekce: získat nejprve ID cviků z exercise_sections
+        if section:
+            resp = supabase.table("exercise_sections") \
+                           .select("exercise_id") \
+                           .eq("section_tag", section) \
+                           .execute()
+            ids = [r["exercise_id"] for r in resp.data]
+            if not ids:
+                return []
+            query = query.in_("id", ids)
+        resp = query.execute()
+        return resp.data
+
+    # Fallback na lokální JSON
     db = _load_db()
     exercises = db["exercises"]
-    
-    if not construct_type and not subcategory:
-        return exercises
-    
-    filtered_exercises = []
-    for exercise in exercises:
-        # Získání kategorií pro tento cvik
-        exercise_categories = [
-            cat for cat in db["categories"] 
-            if cat["exercise_id"] == exercise["id"]
-        ]
-        
-        # Filtrování podle konstruktu a podkategorie
-        if construct_type and subcategory:
-            if any(cat["construct_type"] == construct_type and cat["subcategory"] == subcategory 
-                  for cat in exercise_categories):
-                filtered_exercises.append(exercise)
-        elif construct_type:
-            if any(cat["construct_type"] == construct_type for cat in exercise_categories):
-                filtered_exercises.append(exercise)
-        elif subcategory:
-            if any(cat["subcategory"] == subcategory for cat in exercise_categories):
-                filtered_exercises.append(exercise)
-    
-    return filtered_exercises
+    # Filtrace podle construct_type & subcategory
+    if construct_type:
+        exercises = [e for e in exercises if e.get("construct_type")==construct_type]
+    if subcategory:
+        exercises = [e for e in exercises if e.get("subcategory")==subcategory]
+    # Filtrace podle sekce
+    if section:
+        sec = [s["exercise_id"] for s in db["sections"] if s["section_tag"]==section]
+        exercises = [e for e in exercises if e["id"] in sec]
+    return exercises
 
 def add_exercise(
-    name: str, 
-    description: str, 
-    location: str, 
+    name: str,
+    description: str,
+    location: str,
     materials: List[str],
-    construct_types: List[Dict[str, str]]
+    construct_types: List[Dict[str, str]],
+    section_tags: List[str]
 ) -> bool:
     """
-    Přidá nový cvik do databáze.
-    
-    Args:
-        name: Název cviku
-        description: Popis cviku
-        location: Místo (Tělocvična, Hřiště, Obojí)
-        materials: Seznam potřebného materiálu
-        construct_types: Seznam slovníků s klíči "construct_type" a "subcategory"
-        
-    Returns:
-        True, pokud byl cvik úspěšně přidán, jinak False
+    Přidá nový cvik a jeho kategorie + sekce.
     """
     supabase = _get_supabase_client()
-    
     if supabase:
-        try:
-            # Použití Supabase
-            # Vytvoření nového cviku
-            exercise = {
-                "name": name,
-                "description": description,
-                "location": location,
-                "materials": materials,
-                "created_by": "admin"
-            }
-            
-            # Přidání cviku do databáze
-            response = supabase.table("exercises").insert(exercise).execute()
-            
-            if not response.data:
-                return False
-                
-            exercise_id = response.data[0]["id"]
-            
-            # Přidání kategorií
-            categories = []
-            for ct in construct_types:
-                category = {
-                    "exercise_id": exercise_id,
-                    "construct_type": ct["construct_type"],
-                    "subcategory": ct["subcategory"]
-                }
-                categories.append(category)
-            
-            if categories:
-                supabase.table("exercise_categories").insert(categories).execute()
-            
-            return True
-        except Exception as e:
-            st.error(f"Chyba při komunikaci se Supabase: {e}")
-            # Fallback na lokální databázi
-    
-    # Fallback na lokální JSON soubor
+        # Vložíme základní cvik
+        ex = {
+            "name": name,
+            "description": description,
+            "location": location,
+            "materials": materials,
+            "created_by": st.session_state.get("user", "admin")
+        }
+        resp = supabase.table("exercises").insert(ex).execute()
+        if not resp.data:
+            return False
+        exercise_id = resp.data[0]["id"]
+        # Kategorie
+        cats = []
+        for ct in construct_types:
+            cats.append({
+                "exercise_id": exercise_id,
+                "construct_type": ct["construct_type"],
+                "subcategory": ct["subcategory"]
+            })
+        if cats:
+            supabase.table("exercise_categories").insert(cats).execute()
+        # Sekce
+        secs = []
+        for tag in section_tags:
+            secs.append({
+                "exercise_id": exercise_id,
+                "section_tag": tag
+            })
+        if secs:
+            supabase.table("exercise_sections").insert(secs).execute()
+        return True
+
+    # Fallback JSON
     db = _load_db()
-    
-    # Generování ID
     exercise_id = str(uuid.uuid4())
-    
-    # Vytvoření nového cviku
-    exercise = {
+    db["exercises"].append({
         "id": exercise_id,
         "name": name,
         "description": description,
         "location": location,
         "materials": materials
-    }
-    
-    # Přidání cviku do databáze
-    db["exercises"].append(exercise)
-    
-    # Přidání kategorií
+    })
     for ct in construct_types:
-        category = {
+        db["categories"].append({
             "exercise_id": exercise_id,
             "construct_type": ct["construct_type"],
             "subcategory": ct["subcategory"]
-        }
-        db["categories"].append(category)
-    
-    # Uložení databáze
+        })
+    for tag in section_tags:
+        db["sections"].append({
+            "exercise_id": exercise_id,
+            "section_tag": tag
+        })
     return _save_db(db)
 
 def update_exercise(
     exercise_id: str,
-    name: str, 
-    description: str, 
-    location: str, 
+    name: str,
+    description: str,
+    location: str,
     materials: List[str],
-    construct_types: List[Dict[str, str]]
+    construct_types: List[Dict[str, str]],
+    section_tags: List[str]
 ) -> bool:
     """
-    Aktualizuje existující cvik v databázi.
-    
-    Args:
-        exercise_id: ID cviku
-        name: Název cviku
-        description: Popis cviku
-        location: Místo (Tělocvična, Hřiště, Obojí)
-        materials: Seznam potřebného materiálu
-        construct_types: Seznam slovníků s klíči "construct_type" a "subcategory"
-        
-    Returns:
-        True, pokud byl cvik úspěšně aktualizován, jinak False
+    Aktualizuje existující cvik + kategorie + sekce.
     """
     supabase = _get_supabase_client()
-    
     if supabase:
-        try:
-            # Použití Supabase
-            # Aktualizace cviku
-            exercise = {
-                "name": name,
-                "description": description,
-                "location": location,
-                "materials": materials,
-                "updated_at": "now()"
-            }
-            
-            response = supabase.table("exercises").update(exercise).eq("id", exercise_id).execute()
-            
-            if not response.data:
-                return False
-            
-            # Odstranění starých kategorií
-            supabase.table("exercise_categories").delete().eq("exercise_id", exercise_id).execute()
-            
-            # Přidání nových kategorií
-            categories = []
-            for ct in construct_types:
-                category = {
-                    "exercise_id": exercise_id,
-                    "construct_type": ct["construct_type"],
-                    "subcategory": ct["subcategory"]
-                }
-                categories.append(category)
-            
-            if categories:
-                supabase.table("exercise_categories").insert(categories).execute()
-            
-            return True
-        except Exception as e:
-            st.error(f"Chyba při komunikaci se Supabase: {e}")
-            # Fallback na lokální databázi
-    
-    # Fallback na lokální JSON soubor
+        # Aktualizace základních polí
+        ex = {
+            "name": name,
+            "description": description,
+            "location": location,
+            "materials": materials,
+            "updated_at": "now()"
+        }
+        resp = supabase.table("exercises") \
+                       .update(ex) \
+                       .eq("id", exercise_id) \
+                       .execute()
+        if not resp.data:
+            return False
+        # Kategorie: nejprve smazat
+        supabase.table("exercise_categories").delete().eq("exercise_id", exercise_id).execute()
+        # a vložit nové
+        cats = [{"exercise_id": exercise_id, **ct} for ct in construct_types]
+        if cats:
+            supabase.table("exercise_categories").insert(cats).execute()
+        # Sekce: analogicky
+        supabase.table("exercise_sections").delete().eq("exercise_id", exercise_id).execute()
+        secs = [{"exercise_id": exercise_id, "section_tag": tag} for tag in section_tags]
+        if secs:
+            supabase.table("exercise_sections").insert(secs).execute()
+        return True
+
+    # Fallback JSON
     db = _load_db()
-    
-    # Nalezení cviku
-    for i, exercise in enumerate(db["exercises"]):
-        if exercise["id"] == exercise_id:
-            # Aktualizace cviku
+    # Najdi index cviku
+    for i, ex in enumerate(db["exercises"]):
+        if ex["id"] == exercise_id:
             db["exercises"][i] = {
                 "id": exercise_id,
                 "name": name,
@@ -283,106 +215,60 @@ def update_exercise(
                 "location": location,
                 "materials": materials
             }
-            
-            # Odstranění starých kategorií
-            db["categories"] = [cat for cat in db["categories"] if cat["exercise_id"] != exercise_id]
-            
-            # Přidání nových kategorií
-            for ct in construct_types:
-                category = {
-                    "exercise_id": exercise_id,
-                    "construct_type": ct["construct_type"],
-                    "subcategory": ct["subcategory"]
-                }
-                db["categories"].append(category)
-            
-            # Uložení databáze
-            return _save_db(db)
-    
-    return False
+            break
+    # Kategorie
+    db["categories"] = [c for c in db["categories"] if c["exercise_id"] != exercise_id]
+    for ct in construct_types:
+        db["categories"].append({
+            "exercise_id": exercise_id,
+            **ct
+        })
+    # Sekce
+    db["sections"] = [s for s in db["sections"] if s["exercise_id"] != exercise_id]
+    for tag in section_tags:
+        db["sections"].append({
+            "exercise_id": exercise_id,
+            "section_tag": tag
+        })
+    return _save_db(db)
 
 def delete_exercise(exercise_id: str) -> bool:
     """
-    Odstraní cvik z databáze.
-    
-    Args:
-        exercise_id: ID cviku
-        
-    Returns:
-        True, pokud byl cvik úspěšně odstraněn, jinak False
+    Odstraní cvik (i kategorie a sekce díky ON DELETE CASCADE).
     """
     supabase = _get_supabase_client()
-    
     if supabase:
-        try:
-            # Použití Supabase
-            # Odstranění kategorií
-            supabase.table("exercise_categories").delete().eq("exercise_id", exercise_id).execute()
-            
-            # Odstranění cviku
-            response = supabase.table("exercises").delete().eq("id", exercise_id).execute()
-            
-            return len(response.data) > 0
-        except Exception as e:
-            st.error(f"Chyba při komunikaci se Supabase: {e}")
-            # Fallback na lokální databázi
-    
-    # Fallback na lokální JSON soubor
+        # Supabase cascade smaže i exercise_sections a exercise_categories
+        resp = supabase.table("exercises").delete().eq("id", exercise_id).execute()
+        return len(resp.data) > 0
+
+    # Fallback JSON
     db = _load_db()
-    
-    # Odstranění cviku
-    db["exercises"] = [ex for ex in db["exercises"] if ex["id"] != exercise_id]
-    
-    # Odstranění kategorií
-    db["categories"] = [cat for cat in db["categories"] if cat["exercise_id"] != exercise_id]
-    
-    # Uložení databáze
+    db["exercises"]  = [e for e in db["exercises"]  if e["id"] != exercise_id]
+    db["categories"] = [c for c in db["categories"] if c["exercise_id"] != exercise_id]
+    db["sections"]   = [s for s in db["sections"]   if s["exercise_id"] != exercise_id]
     return _save_db(db)
 
-def get_exercise_categories(exercise_id: str) -> List[Dict[str, str]]:
+def get_exercise_sections(exercise_id: str) -> List[str]:
     """
-    Získá kategorie pro daný cvik.
-    
-    Args:
-        exercise_id: ID cviku
-        
-    Returns:
-        Seznam kategorií cviku
+    Získá seznam sekcí (prep/main/final) pro daný cvik.
     """
     supabase = _get_supabase_client()
-    
     if supabase:
-        try:
-            # Použití Supabase
-            response = supabase.table("exercise_categories").select("*").eq("exercise_id", exercise_id).execute()
-            return response.data
-        except Exception as e:
-            st.error(f"Chyba při komunikaci se Supabase: {e}")
-            # Fallback na lokální databázi
-    
-    # Fallback na lokální JSON soubor
+        resp = supabase.table("exercise_sections") \
+                       .select("section_tag") \
+                       .eq("exercise_id", exercise_id) \
+                       .execute()
+        return [r["section_tag"] for r in resp.data]
+
+    # Fallback JSON
     db = _load_db()
-    return [cat for cat in db["categories"] if cat["exercise_id"] == exercise_id]
+    return [s["section_tag"] for s in db["sections"] if s["exercise_id"] == exercise_id]
 
 def get_construct_types() -> List[str]:
-    """
-    Získá seznam všech typů konstruktů.
-    
-    Returns:
-        Seznam typů konstruktů
-    """
     return ["Zdatnost", "Manipulace s předměty", "Lokomoce"]
 
 def get_subcategories(construct_type: str) -> List[str]:
-    """
-    Získá seznam podkategorií pro daný typ konstruktu.
-    
-    Args:
-        construct_type: Typ konstruktu
-        
-    Returns:
-        Seznam podkategorií
-    """
     if construct_type == "Zdatnost":
         return ["Silová", "Vytrvalostní", "Rychlostní", "Obratnostní", "Pohyblivostní"]
     elif construct_type == "Manipulace s předměty":
@@ -391,21 +277,17 @@ def get_subcategories(construct_type: str) -> List[str]:
         return ["Chůze", "Běh", "Skoky", "Lezení", "Plazení"]
     return []
 
-# Resource management: CRUD functions for podklady
-
 def get_resources(resource_type: str) -> List[Dict[str, str]]:
     """
     Získá seznam podkladů z tabulky resources podle typu.
     """
     supabase = _get_supabase_client()
-
     if supabase:
-        try:
-            response = supabase.table("resources").select("*").eq("resource_type", resource_type).execute()
-
-            return response.data
-        except Exception as e:
-            st.error(f"Chyba při načítání podkladů z Supabase: {e}")
+        resp = supabase.table("resources") \
+                       .select("*") \
+                       .eq("resource_type", resource_type) \
+                       .execute()
+        return resp.data
     return []
 
 def add_resource(resource_type: str, value: str) -> bool:
@@ -417,13 +299,9 @@ def add_resource(resource_type: str, value: str) -> bool:
         return False
     supabase = _get_supabase_client()
     if supabase:
-        try:
-            supabase.table("resources").insert({"resource_type": resource_type, "value": value}).execute()
-            return True
-        except Exception as e:
-            st.error(f"Chyba při přidávání podkladu: {e}")
-    else:
-        st.error("Supabase klient není dostupný.")
+        supabase.table("resources").insert({"resource_type": resource_type, "value": value}).execute()
+        return True
+    st.error("Supabase klient není dostupný.")
     return False
 
 def update_resource(resource_id: str, value: str) -> bool:
@@ -435,13 +313,9 @@ def update_resource(resource_id: str, value: str) -> bool:
         return False
     supabase = _get_supabase_client()
     if supabase:
-        try:
-            supabase.table("resources").update({"value": value}).eq("id", resource_id).execute()
-            return True
-        except Exception as e:
-            st.error(f"Chyba při aktualizaci podkladu: {e}")
-    else:
-        st.error("Supabase klient není dostupný.")
+        supabase.table("resources").update({"value": value}).eq("id", resource_id).execute()
+        return True
+    st.error("Supabase klient není dostupný.")
     return False
 
 def delete_resource(resource_id: str) -> bool:
@@ -450,11 +324,7 @@ def delete_resource(resource_id: str) -> bool:
     """
     supabase = _get_supabase_client()
     if supabase:
-        try:
-            supabase.table("resources").delete().eq("id", resource_id).execute()
-            return True
-        except Exception as e:
-            st.error(f"Chyba při mazání podkladu: {e}")
-    else:
-        st.error("Supabase klient není dostupný.")
+        supabase.table("resources").delete().eq("id", resource_id).execute()
+        return True
+    st.error("Supabase klient není dostupný.")
     return False
