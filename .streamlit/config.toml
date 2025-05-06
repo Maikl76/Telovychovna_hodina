@@ -6,8 +6,6 @@ textColor = "#262730"
 font = "sans serif"
 
 [server]
-# vypne sledování souborů a odstraní ENOSPC chybu
-fileWatcherType = "none"
 enableCORS = true
 enableXsrfProtection = true
 
