@@ -1,28 +1,11 @@
-import subprocess
-import sys
-
-def install_package(package_name, module_name=None):
-    module_name = module_name or package_name
-    try:
-        __import__(module_name)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
-
-# Ensure dependencies
-for pkg, mod in [
-    ("streamlit", None),
-    ("pandas", None),
-    ("openpyxl", None),
-    ("fpdf2", "fpdf"),
-    ("python-docx", "docx"),
-    ("supabase-py", None)
-]:
-    install_package(pkg, mod)
-
 import streamlit as st
-import os
-import base64
-import io
+import pandas as pd
+import openpyxl  # pokud je potřeba explicitně
+from fpdf import FPDF
+from docx import Document
+from supabase import create_client
+
+import os, base64, io
 from datetime import datetime
 
 from utils.database import (
