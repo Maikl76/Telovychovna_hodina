@@ -81,7 +81,6 @@ def page_admin_exercises():
             st.write("Sekce:", ", ".join(db.get_exercise_sections(ex["id"])))
             if st.button("Smazat cvik", key=f"del_{ex['id']}"):
                 db.delete_exercise(ex["id"])
-                st.experimental_rerun()
     st.write("---")
     st.subheader("Přidat / upravit cvik")
     ex_id = st.text_input("ID (prázdné=nový)", key="ex_id")
@@ -99,7 +98,6 @@ def page_admin_exercises():
             db.update_exercise(ex_id, name, desc, loc, mats_list, ct_payload, secs)
         else:
             db.add_exercise(name, desc, loc, mats_list, ct_payload, secs)
-        st.experimental_rerun()
 
 # 7) Výběr cviků pro hodinu
 def page_select_exercises():
@@ -164,8 +162,6 @@ def page_saved_plans():
             content = f.read()
         st.subheader(fname)
         st.text_area(fname, content, height=200)
-        if st.button(f"Načíst {fname}", key=f"load_{fname}"):
-            st.session_state["loaded_plan"] = content
 
 # 11) Administrace podkladů
 def page_admin_resources():
@@ -181,11 +177,9 @@ def page_admin_resources():
             val = st.text_input("Nový podklad", key=f"val_{key}")
             if st.form_submit_button("Přidat"):
                 db.add_resource(key, val)
-                st.experimental_rerun()
         for r in db.get_resources(key):
-            if st.button(f"Smazat {r['value']}", key=f"del_{key}_{r['id']}"):
+            if st.button(f"Smazat {r['value']}", key=f"del_{key}_{r['id']}" ):
                 db.delete_resource(r['id'])
-                st.experimental_rerun()
 
 # Hlavní funkce
 def main():
