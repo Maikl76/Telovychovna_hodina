@@ -133,7 +133,6 @@ def page_select_exercises():
             default=[options[i] for i in defaults],
             key=sel_key
         )
-        # Uložíme seznam názvů, podle kterých se pak identifikují ID
         st.session_state[sel_key] = selected
 
 
@@ -152,7 +151,6 @@ def page_time_allocation():
 
 def page_generate_plan():
     st.title("Písemná příprava")
-    # kontrola výběrů
     for section in ["prep","main","final"]:
         if not st.session_state.get(f"selected_exercises_{section}"):
             st.error("Vyberte cviky ve všech částech.")
@@ -162,8 +160,7 @@ def page_generate_plan():
         minutes = st.session_state.get(f"{section}_time", 0)
         lines.append(f"--- {label} ({minutes} min) ---")
         for opt in st.session_state.get(f"selected_exercises_{section}", []):
-            # najdeme cvik podle textu v options
-            pass  # implementace podle potřeby
+            pass
         lines.append("")
     plan_text = "\n".join(lines)
     st.text_area("Výsledná příprava", plan_text, height=400)
@@ -185,7 +182,7 @@ def page_admin_resources():
     for label, key in [
         ("Vybavení","Vybaveni"),("Zdatnost","Zdatnost"),
         ("Manipulace s předměty","Manipulace s predmety"),("Lokomoce","Lokomoce"),
-        ("Kategorie školy","Kategorie školy"),(":"Místo","Misto")
+        ("Kategorie školy","Kategorie školy"),("Místo","Misto")
     ]:
         st.subheader(label)
         with st.form(f"res_{key}"):
@@ -206,7 +203,6 @@ def main():
         "Administrace": [page_admin_exercises, page_admin_resources]
     }
     step = st.sidebar.radio("Stránky:", [f.__name__.replace('page_','').replace('_',' ').title() for f in pages[mode]])
-    # vykreslíme vybranou stránku
     for f in pages[mode]:
         name = f.__name__.replace('page_','').replace('_',' ').title()
         if name == step:
