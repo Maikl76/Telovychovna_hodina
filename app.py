@@ -20,17 +20,25 @@ from utils.ai_integration import generate_lesson_plan_groq
 
 st.set_page_config(page_title="TV Lekce", layout="wide")
 
-# --- Volba režimu ---
-mode = st.sidebar.selectbox("Režim", ["Vytvoření lekce", "Uložené lekce", "Administrator"])
+def main():
+    # --- Volba režimu ---
+    mode = st.sidebar.selectbox("Režim", ["Vytvoření lekce", "Uložené lekce", "Administrator"])
 
-if mode == "Vytvoření lekce":
+    if mode == "Vytvoření lekce":
+        render_create_lesson()
+    elif mode == "Uložené lekce":
+        render_saved_lessons()
+    else:
+        render_admin()
+
+def render_create_lesson():
     st.title("Generátor tělovýchovné lekce")
 
     # 1) Ověření přihlášení učitele (UUID)
     teacher_id = st.session_state.get("user_id")
     if not teacher_id:
         st.error("Nejste přihlášen(a) jako učitel. Prosím přihlašte se.")
-        st.stop()
+        return
 
     # 2) Výběr nebo vytvoření série
     try:
@@ -52,12 +60,12 @@ if mode == "Vytvoření lekce":
             school_year = st.text_input("Školní rok", "2024/2025")
             if st.form_submit_button("Vytvořit"):
                 try:
-                    meta = create_series(teacher_id, school_id, class_name, subject, school_year)
+                    create_series(teacher_id, school_id, class_name, subject, school_year)
                     st.success("Nová série vytvořena.")
                     st.experimental_rerun()
                 except APIError as e:
                     st.error(f"Chyba při vytváření série: {e}")
-        st.stop()
+        return
     else:
         meta = opts[choice]
         series_id = meta["id"]
@@ -68,7 +76,6 @@ if mode == "Vytvoření lekce":
     except APIError as e:
         st.error(f"Chyba při načítání historie lekcí: {e}")
         prev = []
-
     if prev:
         st.subheader("Poslední lekce v sérii:")
         for lesson in prev:
@@ -85,8 +92,7 @@ if mode == "Vytvoření lekce":
         main = get_exercises()
         cool = get_exercises()
 
-        generate_btn = st.form_submit_button("Generovat lekci")
-        if generate_btn:
+        if st.form_submit_button("Generovat lekci"):
             params = {
                 "environment": environment,
                 "equipment": equipment,
@@ -107,47 +113,48 @@ if mode == "Vytvoření lekce":
         if st.button("Uložit lekci do DB"):
             try:
                 idx = get_next_sequence_index(series_id)
-                success = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
-                if success:
+                ok = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
+                if ok:
                     st.success(f"Lekce uložena jako číslo {idx}.")
                 else:
                     st.error("Ukládání lekce selhalo.")
             except APIError as e:
                 st.error(f"Chyba při ukládání lekce: {e}")
 
-elif mode == "Uložené lekce":
+def render_saved_lessons():
     st.title("Uložené lekce")
-
     teacher_id = st.session_state.get("user_id")
     if not teacher_id:
         st.error("Nejste přihlášen(a) jako učitel. Prosím přihlašte se.")
-        st.stop()
+        return
 
     try:
         series = get_series_for_teacher(teacher_id)
     except APIError as e:
         st.error(f"Chyba při načítání sérií: {e}")
-        series = []
+        return
 
     if not series:
         st.info("Nemáte žádné uložené série lekcí.")
+        return
+
+    sel = st.selectbox("Vyber sérii", [f"{s['class_name']} ({s['school_year']})" for s in series])
+    meta = next(s for s in series if f"{s['class_name']} ({s['school_year']})" == sel)
+
+    try:
+        lessons = get_last_lessons(meta["id"], limit=100)
+    except APIError as e:
+        st.error(f"Chyba při načítání lekcí: {e}")
+        return
+
+    if not lessons:
+        st.info("Pro tuto sérii nejsou žádné lekce.")
     else:
-        sel = st.selectbox("Vyber sérii", [f"{s['class_name']} ({s['school_year']})" for s in series])
-        meta = next(s for s in series if f"{s['class_name']} ({s['school_year']})" == sel)
-        try:
-            lessons = get_last_lessons(meta["id"], limit=100)
-        except APIError as e:
-            st.error(f"Chyba při načítání lekcí: {e}")
-            lessons = []
+        for i, lesson in enumerate(lessons, start=1):
+            st.subheader(f"Lekce {i}")
+            st.json(lesson)
 
-        if not lessons:
-            st.info("Pro tuto sérii nejsou žádné lekce.")
-        else:
-            for i, lesson in enumerate(lessons, start=1):
-                st.subheader(f"Lekce {i}")
-                st.json(lesson)
-
-else:  # Administrator
+def render_admin():
     st.title("Administrace")
 
     st.subheader("Správa zdrojů")
@@ -210,3 +217,6 @@ else:  # Administrator
                         st.experimental_rerun()
                     except APIError as e:
                         st.error(f"Chyba při mazání cviku: {e}")
+
+if __name__ == "__main__":
+    main()
