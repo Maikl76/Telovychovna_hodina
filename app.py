@@ -53,6 +53,8 @@ def render_create_lesson():
                 except APIError as e:
                     st.error(f"Chyba při vytváření série: {e}")
         return
+
+    # zvolena existující série
     meta = opts[choice]
     series_id = meta["id"]
 
@@ -70,7 +72,7 @@ def render_create_lesson():
     # 4) Formulář pro novou lekci
     with st.form("new_lesson"):
         lec_date    = st.date_input("Datum lekce", value=date.today())
-        environment = st.selectbox("Prostředí", get_resources("Místo") or ["tělocvična", "venku", "hala"])
+        environment = st.selectbox("Prostředí", get_resources("Místo") or ["tělocvična","venku","hala"])
         equipment   = st.multiselect("Vybavení", get_resources("Vybavení"))
         goal        = st.text_input("Cíl lekce")
 
@@ -98,7 +100,7 @@ def render_create_lesson():
         if st.button("Uložit lekci do DB"):
             try:
                 idx = get_next_sequence_index(series_id)
-                ok  = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
+                ok = add_lesson_plan(series_id, idx, params, plan, lec_date.isoformat())
                 if ok:
                     st.success(f"Lekce uložena jako číslo {idx}.")
                 else:
@@ -141,11 +143,12 @@ def render_saved_lessons():
 
 def render_admin():
     st.title("Administrace")
+
     st.subheader("Správa zdrojů")
     resource_types = [
-        "Vybavení", "Místo", "Cíl", "Bezpečnost",
-        "Metody", "Kategorie školy", "Zdatnost",
-        "Manipulace s předměty", "Lokomoce"
+        "Vybavení","Místo","Cíl","Bezpečnost",
+        "Metody","Kategorie školy","Zdatnost",
+        "Manipulace s předměty","Lokomoce"
     ]
     tabs = st.tabs(resource_types)
     for tab, rtype in zip(tabs, resource_types):
