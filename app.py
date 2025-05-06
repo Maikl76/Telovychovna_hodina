@@ -2,7 +2,6 @@ import subprocess
 import sys
 
 def install_package(package_name, module_name=None):
-    # Pokud není uvedeno, použijeme název balíčku jako název modulu
     module_name = module_name or package_name
     try:
         __import__(module_name)
@@ -11,15 +10,14 @@ def install_package(package_name, module_name=None):
         subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
         print(f"Balíček '{package_name}' byl úspěšně nainstalován.")
 
-# Seznam závislostí ve formě (název pro pip, název modulu pro import, pokud se liší)
+# Seznam závislostí
 dependencies = [
     ("streamlit", None),
     ("pandas", None),
     ("openpyxl", None),
-    ("fpdf2", "fpdf"),  # Použijeme fpdf2 místo fpdf pro lepší podporu Unicode
+    ("fpdf2", "fpdf"),  # fpdf2 pro Unicode
     ("python-docx", "docx")
 ]
-
 for pkg, mod in dependencies:
     install_package(pkg, mod)
 
@@ -31,221 +29,121 @@ import time
 from datetime import datetime
 import pandas as pd
 
-# Funkce pro vymazání dat na stránce přípravy
-def clear_plan_data():
-    keys_to_clear = [
-        "plan_title",
-        "plan_goal_select",
-        "plan_goal_custom",
-        "lesson_goal",
-        "brief_summary",
-        "plan_date",
-        "plan_place_select",
-        "plan_place_custom",
-        "plan_place",
-        "plan_material",
-        "plan_method_select",
-        "plan_method_custom",
-        "plan_methods",
-        "plan_safety_select",
-        "plan_safety_custom",
-        "plan_safety",
-        "plan_instructor",
-        "prep_output",
-        "main_output",
-        "final_output"
-    ]
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]
+# Importy pro admins a cviky
+from utils.database import (
+    get_resources, get_exercises, get_construct_types,
+    get_subcategories, add_resource, delete_resource,
+    get_exercise_categories, delete_exercise,
+    add_exercise, get_construct_types as construct_types_list,
+    get_subcategories as subcategories_list
+)
+from utils.ai_integration import generate_exercise_suggestion
 
-# Stránka Úvod
+# Vymazání dat
+def clear_plan_data():
+    keys = [
+        "plan_title", "plan_goal_select", "plan_goal_custom", "lesson_goal",
+        "brief_summary", "plan_date", "plan_place_select", "plan_place_custom",
+        "plan_place", "plan_material", "plan_method_select", "plan_method_custom",
+        "plan_methods", "plan_safety_select", "plan_safety_custom", "plan_safety",
+        "plan_instructor", "prep_output", "main_output", "final_output"
+    ]
+    for k in keys:
+        st.session_state.pop(k, None)
+
+# Stránky
+
 def page_intro():
     st.title("Úvod")
-    st.write("Tato aplikace pomáhá vytvořit prompt pro custom GPT model a následně generovat písemnou přípravu na školní tělovýchovnou hodinu.")
-    # Fixně nastavíme 3. třídu
+    st.write("Tato aplikace pomáhá vytvořit prompt pro custom GPT model...")
     st.session_state.class_grade = "3. třída"
     st.write("Vybraná třída: 3. třída")
-    
-    # Inicializace session state pro školy a kategorie, pokud ještě neexistují
-    if 'selected_schools' not in st.session_state:
-        st.session_state.selected_schools = []
-    if 'school_category' not in st.session_state:
-        st.session_state.school_category = {}
-    if 'frequency_by_category' not in st.session_state:
-        st.session_state.frequency_by_category = {
-            "Experimentální": "5 x týdně",
-            "Semi-experimentální": "2 x týdně"
-        }
+    st.session_state.setdefault('selected_schools', [])
+    st.session_state.setdefault('school_category', {})
+    st.session_state.setdefault('frequency_by_category', {"Experimentální":"5 x týdně","Semi-experimentální":"2 x týdně"})
 
-# Stránka Výběr prostředí a vybavení
+
 def page_environment_equipment():
     st.title("Výběr prostředí a vybavení")
-    env = st.selectbox("Vyberte, kde se hodina bude konat:", ["Tělocvična", "Venkovní"])
+    env = st.selectbox("Kde se hodina bude konat?", ["Tělocvična","Venkovní"])
     st.session_state.environment = env
-    st.write("Vybrané prostředí:", env)
-    
-    st.write("Vyberte dostupné vybavení:")
-    try:
-        from utils.database import get_resources
-    except ImportError:
-        st.error("Modul database.py není dostupný. Zkontrolujte instalaci.")
-        get_resources = lambda x: []
+    opts = get_resources("Vybaveni")
+    equipment = sorted([r['value'] for r in opts])
+    st.session_state.equipment = st.multiselect("Vybavení:", equipment, default=equipment[:2])
 
-    def load_resource_options(resource_type):
-        resources = get_resources(resource_type)
-        if resources:
-            return sorted([res['value'] for res in resources])
-        else:
-            st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
-            return []
 
-    equipment_options = load_resource_options("Vybaveni")
-    equipment_selected = st.multiselect("Vybavení:", equipment_options, default=equipment_options[:2] if equipment_options else [])
-    st.session_state.equipment = equipment_selected
-
-# Stránka Nastavení rolí vedoucích
 def page_roles():
-    st.title("Nastavení rolí vedoucích")
-    st.write("Přípravná část: Vede trenér (neměnitelné)")
+    st.title("Nastavení rolí")
     st.session_state.preparatory_leader = "Trenér"
-    
-    main_leader = st.radio("Hlavní část: Vyberte vedoucího:", ["Učitel", "Trenér"])
-    st.session_state.main_leader = main_leader
-    
-    final_leader = st.radio("Závěrečná část: Vyberte vedoucího:", ["Učitel", "Trenér", "Oba"])
-    st.session_state.final_leader = final_leader
-    
-    st.write("Nastavené role:")
-    st.write("• Přípravná část: Trenér")
-    st.write("• Hlavní část:", main_leader)
-    st.write("• Závěrečná část:", final_leader)
+    st.session_state.main_leader = st.radio("Hlavní část vede:",["Učitel","Trenér"])
+    st.session_state.final_leader = st.radio("Závěrečná část vede:",["Učitel","Trenér","Oba"])
 
-# Stránka Výběr cvičebních konstruktů a podkategorií
+
 def page_exercise_constructs():
-    st.title("Výběr cvičebních konstruktů a podkategorií")
-    
-    try:
-        from utils.database import get_resources
-    except ImportError:
-        st.error("Modul database.py není dostupný. Zkontrolujte instalaci.")
-        get_resources = lambda x: []
+    st.title("Výběr cvičebních konstruktů")
+    z = get_resources("Zdatnost"); m = get_resources("Manipulace s predmety"); l = get_resources("Lokomoce")
+    st.session_state.fitness = st.multiselect("Zdatnost:", sorted([r['value'] for r in z]), default=[r['value'] for r in z])
+    st.session_state.manipulation = st.multiselect("Manipulace s předměty:", sorted([r['value'] for r in m]), default=[r['value'] for r in m])
+    st.session_state.locomotion = st.multiselect("Lokomoce:", sorted([r['value'] for r in l]), default=[r['value'] for r in l][:2])
 
-    def load_resource_options(resource_type):
-        resources = get_resources(resource_type)
-        if resources:
-            return sorted([res['value'] for res in resources])
-        else:
-            st.warning(f"Žádné data pro typ '{resource_type}' nenalezena v databázi.")
-            return []
-
-    fitness_options = load_resource_options("Zdatnost")
-    manipulation_options = load_resource_options("Manipulace s predmety")
-    locomotion_options = load_resource_options("Lokomoce")
-    
-    st.write("**Zdatnost:**")
-    fitness_selected = st.multiselect("Zdatnost:", fitness_options, default=fitness_options)
-    st.session_state.fitness = fitness_selected
-    
-    st.write("**Manipulace s předměty:**")
-    manipulation_selected = st.multiselect("Manipulace s předměty:", manipulation_options, default=manipulation_options)
-    st.session_state.manipulation = manipulation_selected
-    
-    st.write("**Lokomoce:**")
-    locomotion_selected = st.multiselect("Lokomoce:", locomotion_options, default=locomotion_options[:2] if locomotion_options else [])
-    st.session_state.locomotion = locomotion_selected
-
-# === Nová stránka: Výběr konkrétních cviků pro hodinu ===
-from utils.database import get_exercises, get_subcategories
 
 def page_select_exercises():
     st.title("🏋️‍♀️ Výběr konkrétních cviků pro hodinu")
-
-    if "environment" not in st.session_state:
-        st.warning("Nejdříve vyberte prostředí a vybavení v předchozí sekci.")
+    if 'environment' not in st.session_state:
+        st.warning("Nejdříve vyberte prostředí a vybavení.")
         return
-
-    environment = st.session_state.get("environment", "Tělocvična")
-    equipment = st.session_state.get("equipment", [])
-
-    section_configs = [
-        ("prep", "Přípravná část"),
-        ("main", "Hlavní část"),
-        ("final", "Závěrečná část")
-    ]
-
-    for section_key, section_label in section_configs:
-        st.subheader(section_label)
-
-        construct_type = st.selectbox(
-            f"Typ konstruktu ({section_label}):",
-            get_subcategories(None),
-            key=f"{section_key}_construct"
-        )
-        subcategory = st.selectbox(
-            f"Podkategorie ({section_label}):",
-            get_subcategories(construct_type),
-            key=f"{section_key}_subcategory"
-        )
-
-        all_exercises = get_exercises(construct_type, subcategory)
-        filtered_exercises = [
-            ex for ex in all_exercises
-            if ex["location"] in [environment, "Obojí"] and
-               all(m in equipment for m in ex.get("materials", []))
-        ]
-
-        if not filtered_exercises:
-            st.info("Nenalezeny vhodné cviky pro dané filtrování.")
+    env = st.session_state.environment
+    equip = st.session_state.equipment
+    for key,label in [('prep','Přípravná část'),('main','Hlavní část'),('final','Závěrečná část')]:
+        st.subheader(label)
+        types = construct_types_list()
+        ct = st.selectbox(f"Typ konstruktu ({label}):", types, key=f"{key}_construct")
+        sc = st.selectbox(f"Podkategorie ({label}):", subcategories_list(ct), key=f"{key}_subcategory")
+        exs = get_exercises(ct, sc)
+        filt = [e for e in exs if e['location'] in [env,'Obojí'] and all(m in equip for m in e.get('materials',[]))]
+        if not filt:
+            st.info("Žádné cviky pro zadané filtry.")
             continue
+        opts = {f"{e['name']} – {e['description'][:50]}...":e['id'] for e in filt}
+        sel = st.multiselect(f"Vyberte cviky pro {label}:", list(opts.keys()), key=f"{key}_sel")
+        st.session_state[f"selected_exercises_{key}"] = [opts[s] for s in sel]
 
-        options = {f"{ex['name']} – {ex['description'][:40]}...": ex['id'] for ex in filtered_exercises}
-        selected = st.multiselect(
-            f"Vyberte cviky pro {section_label}:",
-            options=list(options.keys()),
-            key=f"{section_key}_selected"
-        )
-        st.session_state[f"selected_exercises_{section_key}"] = [options[label] for label in selected]
 
-# ... pokračují ostatní stránky: page_time_allocation, page_generate_prompt, page_generate_plan, page_saved_plans, page_school_selection, admin_login, page_admin_resources, page_admin_exercises, page_admin_ai_exercise
+def page_time_allocation(): ...
+def page_generate_prompt(): ...
+def page_generate_plan(): ...
+def page_saved_plans(): ...
+def page_school_selection(): ...
+
+def admin_login(): ...
+def page_admin_resources(): ...
+def page_admin_exercises(): ...
+def page_admin_ai_exercise(): ...
+
+# Hlavní
+
 def main():
-    if "admin_logged_in" not in st.session_state:
-        st.session_state.admin_logged_in = False
-
     st.sidebar.title("Tělovýchovná jednotka")
-    app_mode = st.sidebar.selectbox(
-        "Vyberte režim:",
-        ["Vytvoření hodiny", "Administrator"]
-    )
-
-    if app_mode == "Vytvoření hodiny":
-        st.sidebar.title("Navigace")
-        pages = {
-            "Úvod": page_intro,
-            "Výběr škol a kategorií": page_school_selection,
-            "Výběr prostředí a vybavení": page_environment_equipment,
-            "Nastavení rolí": page_roles,
-            "Výběr cvičebních konstruktů": page_exercise_constructs,
-            "Výběr cviků": page_select_exercises,
-            "Časové rozdělení hodiny": page_time_allocation,
-            "Generování promptu": page_generate_prompt,
-            "Vygenerování písemné přípravy a export": page_generate_plan,
-            "Uložené přípravy": page_saved_plans
+    mode = st.sidebar.selectbox("Režim:",["Vytvoření hodiny","Administrator"])
+    if mode=="Vytvoření hodiny":
+        pages={
+          "Úvod":page_intro,
+          "Výběr škol a kategorií":page_school_selection,
+          "Výběr prostředí":page_environment_equipment,
+          "Nastavení rolí":page_roles,
+          "Výběr konstruktů":page_exercise_constructs,
+          "Výběr cviků":page_select_exercises,
+          "Časové rozdělení":page_time_allocation,
+          "Generování promptu":page_generate_prompt,
+          "Export přípravy":page_generate_plan,
+          "Uložené":page_saved_plans
         }
-        choice = st.sidebar.radio("Vyberte stránku:", list(pages.keys()))
+        choice=st.sidebar.radio("Stránky:",list(pages.keys()))
         pages[choice]()
+    else:
+        if not admin_login(): return
+        admin_pages={"Správa cviků":page_admin_exercises,"AI cviky":page_admin_ai_exercise,"Podklady":page_admin_resources}
+        ap=st.sidebar.radio("Administrace:",list(admin_pages.keys()))
+        admin_pages[ap]()
 
-    elif app_mode == "Administrator":
-        if not admin_login():
-            st.info("Pro přístup do administrace se musíte přihlásit.")
-            return
-        admin_pages = {
-            "Správa cviků": page_admin_exercises,
-            "Vytvoření cviku s AI": page_admin_ai_exercise,
-            "Správa podkladů": page_admin_resources,
-        }
-        admin_choice = st.sidebar.radio("Administrace:", list(admin_pages.keys()))
-        admin_pages[admin_choice]()
-
-if __name__ == '__main__':
-    main()
+if __name__=='__main__': main()
