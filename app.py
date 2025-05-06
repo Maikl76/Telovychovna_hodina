@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import date
+from postgrest import APIError
 
 from utils.database import (
     get_resources,
@@ -16,30 +17,33 @@ from utils.database import (
     add_lesson_plan
 )
 from utils.ai_integration import generate_lesson_plan_groq
-from postgrest import APIError
 
 st.set_page_config(page_title="TV Lekce", layout="wide")
 
-# --- Výběr režimu ---
+# --- Volba režimu ---
 mode = st.sidebar.selectbox("Režim", ["Vytvoření lekce", "Uložené lekce", "Administrator"])
 
 if mode == "Vytvoření lekce":
     st.title("Generátor tělovýchovné lekce")
 
-    # Ověření přihlášení učitele (UUID)
-    teacher_id = st.session_state.get("user_id", None)
+    # 1) Ověření přihlášení učitele (UUID)
+    teacher_id = st.session_state.get("user_id")
     if not teacher_id:
         st.error("Nejste přihlášen(a) jako učitel. Prosím přihlašte se.")
         st.stop()
 
-    # 1) Výběr nebo vytvoření série
+    # 2) Výběr nebo vytvoření série
     try:
         series = get_series_for_teacher(teacher_id)
     except APIError as e:
-        st.error(f"Chyba při načítání sérií z databáze: {e}")
+        st.error(f"Chyba při načítání sérií: {e}")
         series = []
+
     opts = {f"{s['class_name']} ({s['school_year']})": s for s in series}
-    choice = st.selectbox("Vyber existující sérii nebo Nová série", list(opts.keys()) + ["Nová série"])
+    choice = st.selectbox(
+        "Vyber existující sérii nebo Nová série",
+        list(opts.keys()) + ["Nová série"]
+    )
     if choice == "Nová série":
         with st.form("new_series"):
             school_id   = st.text_input("School ID")
@@ -53,29 +57,30 @@ if mode == "Vytvoření lekce":
                     st.experimental_rerun()
                 except APIError as e:
                     st.error(f"Chyba při vytváření série: {e}")
+        st.stop()
     else:
-        meta      = opts[choice]
+        meta = opts[choice]
         series_id = meta["id"]
 
-    # 2) Zobrazení posledních lekcí
+    # 3) Zobrazení posledních lekcí
     try:
         prev = get_last_lessons(series_id, limit=3)
     except APIError as e:
         st.error(f"Chyba při načítání historie lekcí: {e}")
         prev = []
+
     if prev:
         st.subheader("Poslední lekce v sérii:")
         for lesson in prev:
             st.json(lesson)
 
-    # 3) Formulář pro novou lekci
+    # 4) Formulář pro novou lekci
     with st.form("new_lesson"):
         lec_date    = st.date_input("Datum lekce", value=date.today())
         environment = st.selectbox("Prostředí", get_resources("Místo") or ["tělocvična", "venku", "hala"])
         equipment   = st.multiselect("Vybavení", get_resources("Vybavení"))
         goal        = st.text_input("Cíl lekce")
 
-        # Načtení cviků z DB
         prep = get_exercises()
         main = get_exercises()
         cool = get_exercises()
@@ -93,11 +98,12 @@ if mode == "Vytvoření lekce":
             plan = generate_lesson_plan_groq(meta, params, prev)
             st.session_state["new_plan"] = (plan, params, lec_date)
 
-    # 4) Zobrazení a uložení vygenerované lekce
+    # 5) Zobrazení a uložení
     if "new_plan" in st.session_state:
         plan, params, lec_date = st.session_state["new_plan"]
         st.subheader("Vygenerovaná lekce")
         st.json(plan)
+
         if st.button("Uložit lekci do DB"):
             try:
                 idx = get_next_sequence_index(series_id)
@@ -111,7 +117,8 @@ if mode == "Vytvoření lekce":
 
 elif mode == "Uložené lekce":
     st.title("Uložené lekce")
-    teacher_id = st.session_state.get("user_id", None)
+
+    teacher_id = st.session_state.get("user_id")
     if not teacher_id:
         st.error("Nejste přihlášen(a) jako učitel. Prosím přihlašte se.")
         st.stop()
@@ -143,7 +150,6 @@ elif mode == "Uložené lekce":
 else:  # Administrator
     st.title("Administrace")
 
-    # Správa zdrojů (resources)
     st.subheader("Správa zdrojů")
     resource_types = [
         "Vybavení", "Místo", "Cíl", "Bezpečnost",
@@ -178,7 +184,6 @@ else:  # Administrator
                     except APIError as e:
                         st.error(f"Chyba při mazání zdroje: {e}")
 
-    # Správa cviků
     st.subheader("Správa cviků")
     try:
         exercises = get_exercises()
